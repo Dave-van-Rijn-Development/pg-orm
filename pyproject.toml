@@ -1,0 +1,18 @@
+[project]
+name = "pg_orm"
+version = "0.0.1"
+description = "Minimal PostgreSQL python ORM"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Dave van Rijn Development", email = "develop@davevanrijn.nl" }]
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+#[project.urls]
+#Homepage = ""
+
+[build-system]
+requires = ["setuptools>=62.6"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,16 @@
+# Temp files
+temp.*
+__pycache__
+*.pyc
+.DS_Store
+
+# Config files
+*.ini
+
+# Editor
+.idea
+
+# Build
+dist
+build
+**/*egg-info/*

@@ -1,0 +1,15 @@
+from __future__ import annotations
+from typing import Any, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pg_orm.core.sql_model import SQLModel
+
+
+def is_sql_model(arg: Any) -> bool:
+    from pg_orm.core.sql_model import SQLModel
+    return type(arg) is type and issubclass(arg, SQLModel)
+
+
+def is_model_base(cls: Type[SQLModel]) -> bool:
+    from pg_orm.core.sql_model import ModelBase
+    return ModelBase in cls.mro()
