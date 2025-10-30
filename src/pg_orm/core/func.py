@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from psycopg.sql import Composed, SQL, Literal, Identifier
+from psycopg.sql import Composed, SQL, Identifier
 
 from pg_orm.core.constants import EXCLUDED
 from pg_orm.core.query_clause import QueryClause

@@ -73,7 +73,9 @@ class UniqueConstraint(TableArg):
 
     def build_create_sql(self) -> Composed:
         sql = SQL(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage WHERE table_name = {str_table_name} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS {table_name} ADD CONSTRAINT {name} UNIQUE ({columns}); END IF; END; $$;")
+            "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage "
+            "WHERE table_name = {str_table_name} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS "
+            "{table_name} ADD CONSTRAINT {name} UNIQUE ({columns}); END IF; END; $$;")
         # sql = SQL("ALTER TABLE IF EXISTS {table_name} ADD CONSTRAINT {name} UNIQUE ({columns});")
         return sql.format(
             str_table_name=Literal(self.table_name),

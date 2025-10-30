@@ -2,7 +2,7 @@ from typing import Type, MutableMapping, Any
 
 from psycopg.sql import SQL, Composable, Identifier, Composed
 
-from pg_orm.aio.async_query import AsyncInsert, AsyncDelete, AsyncUpdate
+from pg_orm.aio.async_query import AsyncInsert, AsyncUpdate
 from pg_orm.aio.async_session import AsyncDatabaseSession
 from pg_orm.core.column import Column, ForeignKey, Relationship
 from pg_orm.core.enums import ModelSessionState
@@ -325,7 +325,8 @@ class SQLModel:
             if isinstance(column, ForeignKey):
                 continue
             column_values.append(
-                f'{prefix}\t{column.attr_name}: (PG type: {column._col_type.get_db_type()}, {column._col_type.python_type}) = {column.get_value(apply_default=False)}')
+                f'{prefix}\t{column.attr_name}: (PG type: {column._col_type.get_db_type()}, '
+                f'{column._col_type.python_type}) = {column.get_value(apply_default=False)}')
         debug_str += '\n'.join(column_values) + f'\n{prefix}Foreign keys:'
         fk_values: list[str] = list()
         for fk in self.inst_foreign_keys.values():
@@ -338,7 +339,8 @@ class SQLModel:
             relation_values: list[str] = list()
             for attr_name, relation in self.inst_relationships.items():
                 relation_values.append(
-                    f'{prefix}\t{attr_name:<11}: {relation.get_value(apply_default=False).debug_info(expand=expand, prefix=prefix + "\t")}')
+                    f'{prefix}\t{attr_name:<11}: {relation.get_value(apply_default=False).debug_info(
+                        expand=expand, prefix=prefix + "\t")}')
             debug_str += '\n\n'.join(relation_values)
         return debug_str
 

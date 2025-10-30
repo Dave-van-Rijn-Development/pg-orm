@@ -240,7 +240,10 @@ class ForeignKey(Constraint):
 
     def build_create_sql(self) -> Composed:
         sql = SQL(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage WHERE table_name = {str_ref_table} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS {table_name} ADD CONSTRAINT {name} FOREIGN KEY ({fk_column}) REFERENCES {ref_table} ({ref_column}) MATCH SIMPLE ON UPDATE {on_update} ON DELETE {on_delete}; END IF; END; $$;")
+            "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage "
+            "WHERE table_name = {str_ref_table} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS "
+            "{table_name} ADD CONSTRAINT {name} FOREIGN KEY ({fk_column}) REFERENCES {ref_table} ({ref_column}) "
+            "MATCH SIMPLE ON UPDATE {on_update} ON DELETE {on_delete}; END IF; END; $$;")
         return sql.format(
             table_name=Identifier(self.table_name),
             str_name=Literal(self.get_name()),

@@ -3,7 +3,6 @@ import json
 import re
 import uuid
 from abc import ABC, abstractmethod
-from codecs import BOM_LE
 from copy import copy
 from enum import Enum
 from typing import TypeVar, Any, Type, Self
@@ -44,7 +43,7 @@ class ColumnType:
         """
         Parse database value to Python value
         """
-        if db_value is not None and type(db_value) != self.python_type:
+        if db_value is not None and type(db_value) is not self.python_type:
             db_value = self.python_type(db_value)
         self.value = db_value
 
@@ -234,13 +233,15 @@ class ENUM(PGType):
 
     def build_create_sql(self) -> Composed:
         sql = SQL(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type t LEFT JOIN pg_namespace p ON t.typnamespace=p.oid WHERE t.typname={} AND p.nspname='public') THEN CREATE TYPE {} AS ENUM ({}); END IF; END $$;")
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type t LEFT JOIN pg_namespace p ON t.typnamespace=p.oid "
+            "WHERE t.typname={} AND p.nspname='public') THEN CREATE TYPE {} AS ENUM ({}); END IF; END $$;")
         enum_values = [Literal(str(item.value)) for item in self.python_type]
         return sql.format(self.name, Identifier(self.name), SQL(', ').join(enum_values))
 
     def build_drop_sql(self) -> Composable:
         sql = SQL(
-            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_type t LEFT JOIN pg_namespace p ON t.typnamespace=p.oid WHERE t.typname={} AND p.nspname='public') THEN DROP TYPE {}; END IF; END $$;")
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_type t LEFT JOIN pg_namespace p ON t.typnamespace=p.oid "
+            "WHERE t.typname={} AND p.nspname='public') THEN DROP TYPE {}; END IF; END $$;")
         return sql.format(self.name, Identifier(self.name))
 
     def get_db_type(self) -> Composable:
