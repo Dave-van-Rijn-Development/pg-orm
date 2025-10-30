@@ -5,11 +5,10 @@ from datetime import date
 from enum import Enum
 from typing import Callable, Type, Any, Sequence, TYPE_CHECKING, Self
 
-from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Composed
-
-from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType
+from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType, Integer, BigInteger
 from pg_orm.core.query_clause import QueryClause, Equals, NotIn, In, Between, NotEquals, Greater, GreaterEquals, Less, \
     LessEquals, Is, Alias
+from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Composed
 
 if TYPE_CHECKING:
     from pg_orm.core.sql_model import SQLModel
@@ -22,10 +21,13 @@ from pg_orm.core.types import Queryable
 class Column:
     def __init__(self, col_type: Type[ColumnType] | ColumnType, *, name: str = None,
                  default: Callable[[], ColType] = None, primary_key: bool = False, nullable: bool = True,
-                 attr_name: str = '', on_update: Callable[[], Any] = None, **kwargs):
+                 attr_name: str = '', on_update: Callable[[], Any] = None, auto_increment: bool = False, **kwargs):
         if callable(col_type):
             col_type = col_type()
+        if auto_increment and not isinstance(col_type, (Integer, BigInteger)):
+            raise TypeError('Can only auto increment Integer or BigInteger')
         self._col_type = col_type
+        self.auto_increment = auto_increment
         self._value_set = kwargs.get('value_set', False)
         self.changed = kwargs.get('changed', False)
         self._default = default
@@ -42,6 +44,7 @@ class Column:
     def clone(self) -> Self:
         column = self.__class__.__new__(self.__class__)
         column._col_type = self._col_type.clone()
+        column.auto_increment = self.auto_increment
         column._value_set = self._value_set
         column.changed = self.changed
         column._default = self._default
@@ -53,6 +56,11 @@ class Column:
         column.table_class = self.table_class
         column.on_update = self.on_update
         return column
+
+    @property
+    def sequence_name(self) -> str:
+        sql_name = self.sql_name()
+        return f'{self.table_name}_{sql_name}_seq'
 
     def get_value(self, apply_default: bool = True) -> ColType:
         value = self._col_type.value
@@ -90,12 +98,20 @@ class Column:
     def full_sql_name(self) -> Identifier:
         return Identifier(self.table_name, self.sql_name())
 
-    def table_column_str(self) -> Composable:
+    def table_column_str(self) -> tuple[Composable, list[Composable]]:
+        pre_create: list[Composable] = list()
+        if self.auto_increment:
+            pre_create.append(SQL("CREATE SEQUENCE IF NOT EXISTS public.{sequence_name} INCREMENT 1 START 1 "
+                                  "MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1;").format(
+                sequence_name=Identifier(self.sequence_name)))
         name = self.sql_name()
         sql_str = SQL('{} {}').format(Identifier(name), self._col_type.get_db_type())
         if not self.nullable:
             sql_str += SQL(' NOT NULL')
-        return sql_str
+        if self.auto_increment:
+            sql_str += SQL(' DEFAULT nextval({sequence_name}::regclass)').format(
+                sequence_name=self.sequence_name)
+        return sql_str, pre_create
 
     def get_column_type(self) -> ColumnType:
         return self._col_type
@@ -262,7 +278,7 @@ class ForeignKey(Constraint):
             constraint_name=Identifier(self.get_name())
         )
 
-    def table_column_str(self) -> Composable:
+    def table_column_str(self) -> tuple[Composable, list]:
         if not (registry := self.table_class.registry):
             raise ValueError(f'Table class {self.table_class.__name__} is not registered')
         ref_cls = registry.get_model(self.ref_table_name)
@@ -271,7 +287,7 @@ class ForeignKey(Constraint):
         sql_str = SQL('{} {}').format(Identifier(name), ref_col_type)
         if not self.nullable:
             sql_str += SQL(' NOT NULL')
-        return sql_str
+        return sql_str, list()
 
     def parse_from_db(self, db_value: Any):
         if not (registry := self.table_class.registry):
@@ -335,9 +351,9 @@ class Relationship(Column):
                 break
         if not ref_id:
             return None
-        for obj in session.known_objects:
+        for obj in session.known_objects.values():
             if type(obj) is ref_cls:
-                for ref_column in obj.inst_primary_columns():
+                for ref_column in obj.inst_primary_columns.values():
                     if ref_column.get_value(apply_default=False) == ref_id:
                         return obj
         if not ref_primary_col:

@@ -1,8 +1,9 @@
 from enum import Enum
 from uuid import uuid4
 
+from pg_orm.aio.async_column import AsyncRelationship
 from pg_orm.core.column import Column, EncryptedColumn, ForeignKey, Relationship
-from pg_orm.core.column_type import UUID, String, JSONB, ENUM
+from pg_orm.core.column_type import UUID, String, JSONB, ENUM, BigInteger
 from pg_orm.core.enums import CascadeAction, IndexOption
 from pg_orm.core.table_args import Index, UniqueConstraint
 from pg_orm.core.sql_model import ModelBase
@@ -14,7 +15,7 @@ class TestEnum(Enum):
 
 
 class Base(ModelBase):
-    id = Column(UUID, primary_key=True, default=uuid4)
+    id = Column(BigInteger, primary_key=True, auto_increment=True)
 
 
 class Test(Base):
@@ -25,7 +26,7 @@ class Test(Base):
     enum_value = Column(ENUM('enum_value', TestEnum))
     test_two_id = ForeignKey('test_two', 'id', on_delete=CascadeAction.CASCADE)
 
-    test_two = Relationship('test_two')
+    test_two = AsyncRelationship('test_two')
 
     __table_args__ = (
         Index('ix_test_label', 'label', options={'label': (IndexOption.DESC, IndexOption.NULLS_LAST)}),

@@ -187,17 +187,23 @@ class SQLModel:
         sql_str = SQL('CREATE TABLE IF NOT EXISTS {} (').format(Identifier(cls.__schema__, cls.__table_name__))
         table_attrs: list[Composable] = list()
         primary_keys: list[Composable] = list()
+        pre_create_objects: list[Composable] = list()
         for column in cls.columns().values():
             if isinstance(column, Relationship):
                 continue
             if not column.sql_name():
                 continue
-            table_attrs.append(column.table_column_str())
+            table_column_str, pre_create = column.table_column_str()
+            table_attrs.append(table_column_str)
+            pre_create_objects.extend(pre_create)
             if column.primary_key:
                 primary_keys.append(Identifier(column.sql_name()))
         if primary_keys:
             table_attrs.append(SQL(' PRIMARY KEY ({})').format(SQL(', ').join(primary_keys)))
         sql_str += SQL(', ').join(table_attrs) + SQL(')')
+        if pre_create_objects:
+            pre_create_str = SQL('\n').join(pre_create_objects)
+            sql_str = pre_create_str + SQL('\n') + sql_str
         return sql_str + SQL(';')
 
     @classmethod
@@ -212,7 +218,7 @@ class SQLModel:
         column_names: list[Identifier] = list()
         column_values: list[Any] = list()
         for column in self._columns.values():
-            if isinstance(column, Relationship):
+            if isinstance(column, Relationship) or column.auto_increment:
                 continue
             column_names.append(Identifier(column.sql_name()))
             column_values.append(column.parse_to_db())
@@ -224,7 +230,7 @@ class SQLModel:
         column_names: list[Identifier] = list()
         column_values: list[Any] = list()
         for column in self._columns.values():
-            if isinstance(column, Relationship):
+            if isinstance(column, Relationship) or column.auto_increment:
                 continue
             column_names.append(Identifier(column.sql_name()))
             column_values.append(column.parse_to_db())
@@ -271,7 +277,7 @@ class SQLModel:
         update_columns: list[Column] = list()
         for column in self._columns.values():
             if not column.changed:
-                if column.on_update is not None:
+                if column.on_update is not None and callable(column.on_update):
                     update_columns.append(column)
                 continue
             value = column.parse_to_db(apply_default=False)
@@ -287,7 +293,7 @@ class SQLModel:
 
     def _get_update_primary_keys(self) -> dict[Column, Any]:
         primary_columns = self.inst_primary_columns.values()
-        primary_values: dict[Column: Any] = dict()
+        primary_values: dict[Column, Any] = dict()
         for column in primary_columns:
             value = column.parse_to_db(apply_default=False)
             primary_values[column] = value
@@ -308,6 +314,14 @@ class SQLModel:
         for column, value in primary_values.items():
             delete = delete.where(column == value)
         return delete
+
+    def object_persisted(self):
+        """
+        Should be called by the owner Session to notify the object all changes have been pushed to the database
+        layer (might not be committed yet though)
+        """
+        for column in self.columns().values():
+            column.changed = False
 
     def debug_info(self, expand: bool = False, prefix: str = '') -> str:
         """

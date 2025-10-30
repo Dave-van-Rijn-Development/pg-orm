@@ -371,12 +371,14 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         if not (statement := obj.build_async_update(session=self)):
             return self
         await self.execute(statement)
+        obj.object_persisted()
         return self
 
     async def _insert(self, obj: SQLModel) -> Self:
         insert = obj.build_async_insert(session=self)
         await self.execute(insert)
         obj.exists_in_db = True
+        obj.object_persisted()
         return self._replace(obj)
 
     def _delete(self, obj: SQLModel) -> Self:
