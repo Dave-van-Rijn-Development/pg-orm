@@ -4,6 +4,7 @@ import re
 import uuid
 from abc import ABC, abstractmethod
 from copy import copy
+from decimal import Decimal
 from enum import Enum
 from typing import TypeVar, Any, Type, Self
 
@@ -89,9 +90,9 @@ class BigInteger(ColumnType):
     python_type = int
 
 
-class Float(ColumnType):
+class Numeric(ColumnType):
     pg_type = 'NUMERIC'
-    python_type = float
+    python_type = Decimal
 
 
 class Date(ColumnType):
