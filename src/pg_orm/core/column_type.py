@@ -215,6 +215,8 @@ class ENUM(PGType):
         return value.value
 
     def parse_value(self, value: Any) -> ColType:
+        if value is None:
+            return None
         if isinstance(value, str):
             return self.python_type(value)
         elif not isinstance(value, Enum):

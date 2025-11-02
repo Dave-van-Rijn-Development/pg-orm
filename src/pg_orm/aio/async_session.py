@@ -47,11 +47,10 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
     created_objects: list[SQLModel] = list()
     deleted_objects: MutableMapping[str, SQLModel] = dict()
 
-    @classmethod
-    async def create(cls, *, auto_commit: bool = True, credentials: Credentials = None,
-                     isolate: bool = False, ensure_path: str = None) -> Self:
+    def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
+                isolate: bool = False, ensure_path: str = None) -> Self:
         """
-        Get the DatabaseSession object for the current thread, or construct a new one if none is constructed before.
+        Get the AsyncDatabaseSession object for the current thread, or construct a new one if none is constructed before.
         This makes use there is generally only one session per thread.
 
         :param auto_commit: Whether the underlying database connection should autocommit. Default True
@@ -79,11 +78,10 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         session.created_objects = list()
         session.credentials = credentials
         if isolate:
-            atexit.register(session.close_sync)
+            atexit.register(session.close)
         else:
             _add_local_session(session)
             AsyncDatabaseSession.__instances__[cls].add(session)
-        await session.execute(SQL("SET search_path TO public;"))
         return session
 
     def test_connect(self):
