@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date
 from enum import Enum
-from typing import Callable, Type, Any, Sequence, TYPE_CHECKING, Self
+from typing import Callable, Type, Any, Sequence, TYPE_CHECKING, Self, LiteralString, cast
 
 from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType, Integer, BigInteger
 from pg_orm.core.query_clause import QueryClause, Equals, NotIn, In, Between, NotEquals, Greater, GreaterEquals, Less, \
@@ -20,7 +20,7 @@ from pg_orm.core.types import Queryable
 
 class Column:
     def __init__(self, col_type: Type[ColumnType] | ColumnType, *, name: str = None,
-                 default: Callable[[], ColType] = None, primary_key: bool = False, nullable: bool = True,
+                 default: Callable[[], ColType] | ColType = None, primary_key: bool = False, nullable: bool = True,
                  attr_name: str = '', on_update: Callable[[], Any] = None, auto_increment: bool = False, **kwargs):
         if callable(col_type):
             col_type = col_type()
@@ -66,7 +66,9 @@ class Column:
         value = self._col_type.value
         if value is None:
             if apply_default and self._default is not None:
-                value = self._default()
+                value = self._default
+                if callable(value):
+                    value = value()
                 self._col_type.value = value
         return value
 
@@ -101,8 +103,9 @@ class Column:
     def table_column_str(self) -> tuple[Composable, list[Composable]]:
         pre_create: list[Composable] = list()
         if self.auto_increment:
-            pre_create.append(SQL("CREATE SEQUENCE IF NOT EXISTS public.{sequence_name} INCREMENT 1 START 1 "
-                                  "MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1;").format(
+            pre_create.append(SQL(cast(LiteralString,
+                                       "CREATE SEQUENCE IF NOT EXISTS public.{sequence_name} INCREMENT 1 START 1 "
+                                       "MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1;")).format(
                 sequence_name=Identifier(self.sequence_name)))
         name = self.sql_name()
         sql_str = SQL('{} {}').format(Identifier(name), self._col_type.get_db_type())
@@ -175,7 +178,9 @@ class EncryptedColumn(Column):
         value = self._col_type.get_value()
         if value is None:
             if apply_default and self._default is not None:
-                value = self._default()
+                value = self._default
+                if callable(value):
+                    value = value()
                 self._col_type.value = encrypt(self._col_type.string_parser(value))
             return value
         return self._col_type.parse_value(decrypt(self._col_type.get_value()))
@@ -255,11 +260,12 @@ class ForeignKey(Constraint):
         return clone
 
     def build_create_sql(self) -> Composed:
-        sql = SQL(
+        sql = SQL(cast(
+            LiteralString,
             "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage "
             "WHERE table_name = {str_ref_table} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS "
             "{table_name} ADD CONSTRAINT {name} FOREIGN KEY ({fk_column}) REFERENCES {ref_table} ({ref_column}) "
-            "MATCH SIMPLE ON UPDATE {on_update} ON DELETE {on_delete}; END IF; END; $$;")
+            "MATCH SIMPLE ON UPDATE {on_update} ON DELETE {on_delete}; END IF; END; $$;"))
         return sql.format(
             table_name=Identifier(self.table_name),
             str_name=Literal(self.get_name()),
@@ -268,8 +274,8 @@ class ForeignKey(Constraint):
             str_ref_table=Literal(self.ref_table_name),
             ref_table=Identifier(self.ref_table_name),
             ref_column=Identifier(self.ref_column_name),
-            on_update=SQL(self.on_update.value),
-            on_delete=SQL(self.on_delete.value)
+            on_update=SQL(cast(LiteralString, self.on_update.value)),
+            on_delete=SQL(cast(LiteralString, self.on_delete.value))
         )
 
     def build_drop_sql(self) -> Composed:
