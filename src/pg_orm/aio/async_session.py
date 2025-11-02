@@ -450,10 +450,12 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
     async def flush(self=None) -> Self:
         for obj in self.known_objects.values():
             await self._flush_obj(obj)
+            obj.purge()
         for obj in self.deleted_objects.values():
             await self.execute_delete(obj)
         for obj in self.created_objects:
             await self._flush_obj(obj)
+            obj.purge()
         return self
 
     async def rollback(self=None):

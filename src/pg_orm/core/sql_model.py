@@ -324,6 +324,14 @@ class SQLModel:
         for column in self.columns().values():
             column.changed = False
 
+    def purge(self):
+        """
+        Clear all linked objects to force reloading from DB
+        :return:
+        """
+        for relation in self.inst_relationships.values():
+            relation.purge()
+
     def debug_info(self, expand: bool = False, prefix: str = '') -> str:
         """
         Generate a debug string for this object. Includes columns and values and optionally relationships
