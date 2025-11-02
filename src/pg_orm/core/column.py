@@ -5,10 +5,11 @@ from datetime import date
 from enum import Enum
 from typing import Callable, Type, Any, Sequence, TYPE_CHECKING, Self, LiteralString, cast
 
+from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Composed
+
 from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType, Integer, BigInteger
 from pg_orm.core.query_clause import QueryClause, Equals, NotIn, In, Between, NotEquals, Greater, GreaterEquals, Less, \
     LessEquals, Is, Alias
-from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Composed
 
 if TYPE_CHECKING:
     from pg_orm.core.sql_model import SQLModel
@@ -40,6 +41,7 @@ class Column:
 
         from pg_orm.core.sql_model import SQLModel
         self.table_class: Type[SQLModel] = kwargs.get('table_class', SQLModel)
+        self._class_instance: SQLModel | None = None
 
     def clone(self) -> Self:
         column = self.__class__.__new__(self.__class__)
@@ -55,6 +57,7 @@ class Column:
         column.table_name = self.table_name
         column.table_class = self.table_class
         column.on_update = self.on_update
+        column._class_instance = self._class_instance
         return column
 
     @property
@@ -305,9 +308,11 @@ class ForeignKey(Constraint):
 
 
 class Relationship(Column):
-    def __init__(self, table_name: str, **kwargs):
+    def __init__(self, table_name: str, as_list: bool = None, **kwargs):
         super().__init__(RelationColumnType, **kwargs)
+        self._as_list = as_list
         self.ref_table_name = table_name
+        self._value: SQLModel | None = None
 
     def clone(self):
         clone = super().clone()
@@ -322,14 +327,37 @@ class Relationship(Column):
 
     @property
     def fk_column(self) -> ForeignKey | None:
-        for column in self.table_class.selectable_columns():
+        if not self._class_instance:
+            return None
+        for column in self._class_instance.inst_selectable_columns.values():
             if not isinstance(column, ForeignKey):
                 continue
             if column.ref_table_name == self.ref_table_name:
                 return column
         return None
 
+    @property
+    def pk_column(self) -> Column | None:
+        if not self._class_instance:
+            return None
+        if primary_keys := list(self._class_instance.inst_primary_columns.values()):
+            return primary_keys[0]
+        return None
+
+    @property
+    def ref_fk_column(self) -> ForeignKey | None:
+        if not (ref_table := self.ref_table_cls):
+            return None
+        for column in ref_table.selectable_columns():
+            if not isinstance(column, ForeignKey):
+                continue
+            if column.ref_table_name == self.table_name:
+                return column
+        return None
+
     def get_value(self, apply_default: bool = True) -> SQLModel:
+        if self._value is not None:
+            return self._value
         return self._get_from_session()
 
     def set_value(self, value: SQLModel):
@@ -341,28 +369,61 @@ class Relationship(Column):
         if column := self.fk_column:
             column.set_value(ref_id)
 
+    def purge(self):
+        self._value = None
+
     def _get_from_session(self) -> SQLModel | None:
         if not (registry := self.table_class.registry):
             raise ValueError(f'Table class {self.table_class.__name__} is not registered')
         if not (ref_cls := registry.get_model(model_name=self.ref_table_name)):
             raise ValueError(f'No table class found for table name {self.ref_table_name}')
-        session = DatabaseSession()
-        ref_primary_col = ref_cls.primary_columns()[0]
-        ref_id: str | None = None
-        for column in self.table_class.selectable_columns():
-            if not isinstance(column, ForeignKey):
-                continue
-            if column.ref_table_name == self.ref_table_name:
-                ref_id = column.get_value(apply_default=False)
-                break
-        if not ref_id:
+        if fk_column := self.fk_column:
+            self._value = self._get_parent_from_session(fk_column=fk_column, ref_cls=ref_cls)
+        elif ref_fk_column := self.ref_fk_column:
+            self._value = self._get_children_from_session(fk_column=ref_fk_column, ref_cls=ref_cls)
+        return self._value
+
+    def _get_parent_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
+            SQLModel | list[SQLModel] | None:
+        if not (ref_id := fk_column.get_value(apply_default=False)):
             return None
-        for obj in session.known_objects.values():
-            if type(obj) is ref_cls:
+        select_list = self._as_list if self._as_list is not None else False
+        session = DatabaseSession()
+        if not select_list:
+            # Try to get parent from loaded objects
+            for obj in session.known_objects.values():
+                if type(obj) is not ref_cls:
+                    continue
                 for ref_column in obj.inst_primary_columns.values():
                     if ref_column.get_value(apply_default=False) == ref_id:
                         return obj
-        if not ref_primary_col:
+        # Loading as list or not seen yet, load from DB
+        if not (ref_primary_col := ref_cls.primary_columns()[0]):
             return None
         query = session.select(ref_cls).where(SQL('{} = {}').format(Identifier(ref_primary_col.sql_name()), ref_id))
+        if select_list:
+            return query.all()
+        return query.first()
+
+    def _get_children_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
+            SQLModel | list[SQLModel] | None:
+        if not (pk_column := self.pk_column):
+            return None
+        if not (ref_id := pk_column.get_value(apply_default=False)):
+            return None
+        select_list = self._as_list if self._as_list is not None else True
+        session = DatabaseSession()
+        if not select_list:
+            # Try to get parent from loaded objects
+            for obj in session.known_objects.values():
+                if type(obj) is not ref_cls:
+                    continue
+                for ref_column in obj.inst_foreign_keys().values():
+                    if ref_column.get_value(apply_default=False) == ref_id:
+                        return obj
+                # Loading as list or not seen yet, load from DB
+        query = session.select(ref_cls).where(
+            SQL('{} = {}').format(Identifier(fk_column.sql_name()), ref_id))
+        if select_list:
+            return query.all()
         return query.first()

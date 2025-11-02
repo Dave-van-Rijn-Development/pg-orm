@@ -36,6 +36,7 @@ class SQLModel:
         object.__setattr__(self, 'exists_in_db', False)
         for col_name, col in self.columns().items():
             col.attr_name = col_name
+            col._class_instance = self
             self._columns[col_name] = col.clone()
         for key, value in kwargs.items():
             setattr(self, key, value)
