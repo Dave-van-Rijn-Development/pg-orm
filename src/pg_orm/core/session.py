@@ -34,7 +34,7 @@ class Credentials:
         self.database_name = database_name or Credentials.default_database_name
 
 
-_proxy_attrs = (
+session_proxy_attrs = (
     'update',
     'select',
     'execute',
@@ -76,7 +76,7 @@ class SessionMeta(type):
         cls._configured = True
 
     def __getattribute__(cls, item):
-        if item in _proxy_attrs:
+        if item in session_proxy_attrs:
             return getattr(DatabaseSession(), item)
         return object.__getattribute__(cls, item)
 
