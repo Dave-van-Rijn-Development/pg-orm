@@ -14,10 +14,11 @@ from psycopg.sql import Composed, Composable, SQL, Identifier
 from pg_orm.aio.async_query import AsyncSelect, AsyncUpdate, AsyncQuery, AsyncInsert, AsyncDelete
 from pg_orm.core.query_clause import QueryParams, Distinct
 from pg_orm.core.session import Credentials, session_proxy_attrs
+from pg_orm.core.types import Selectable
 
 if TYPE_CHECKING:
     from pg_orm.core.sql_model import SQLModel
-from pg_orm.core.types import Selectable
+    from pg_orm.aio.async_sql_model import AsyncSQLModel
 
 
 class AsyncSessionMeta(type):
@@ -48,9 +49,9 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
     # Used to set the search path before each query. This should normally not be needed, but in some cases the
     # search_path gets left behind in an invalid state, like when using postgres_fdw.
     _ensure_path: str | None = None
-    known_objects: MutableMapping[str, SQLModel] = dict()
-    created_objects: list[SQLModel] = list()
-    deleted_objects: MutableMapping[str, SQLModel] = dict()
+    known_objects: MutableMapping[str, AsyncSQLModel] = dict()
+    created_objects: list[AsyncSQLModel] = list()
+    deleted_objects: MutableMapping[str, AsyncSQLModel] = dict()
 
     def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
                 isolate: bool = False, ensure_path: str = None) -> Self:
@@ -259,7 +260,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         cursor = await self._cursor
         return cursor.rowcount
 
-    async def add(self, obj: SQLModel) -> Self:
+    async def add(self, obj: AsyncSQLModel) -> Self:
         """
         Add given object to the Python session. This does not insert the object into the database directly,
         but will insert/update the object when the session flushes.
@@ -269,25 +270,25 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         # Create the cursor if needed to make sure objects get flushed
         _ = await self._cursor
         if not obj.exists_in_db:
-            obj.set_defaults()
+            await obj.set_defaults()
         if primary_str := obj.primary_str:
             self.known_objects[primary_str] = obj
         else:
             self.created_objects.append(obj)
         return self
 
-    async def add_all(self, objs: Iterable[SQLModel]) -> Self:
+    async def add_all(self, objs: Iterable[AsyncSQLModel]) -> Self:
         for obj in objs:
             await self.add(obj)
         return self
 
-    def insert(self, obj: Selectable | SQLModel) -> AsyncInsert:
+    def insert(self, obj: Selectable | AsyncSQLModel) -> AsyncInsert:
         from pg_orm.core.sql_model import SQLModel
         if isinstance(obj, SQLModel):
             return obj.build_async_insert(session=self)
         return AsyncInsert(obj, session=self)
 
-    def delete(self, obj: SQLModel) -> Self:
+    def delete(self, obj: AsyncSQLModel) -> Self:
         primary_str = obj.primary_str
         if primary_str in self.known_objects:
             del self.known_objects[primary_str]
@@ -299,7 +300,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             return self
         self.deleted_objects[obj.primary_str] = obj
 
-    async def execute_delete(self, obj: SQLModel) -> AsyncDelete:
+    async def execute_delete(self, obj: AsyncSQLModel) -> AsyncDelete:
         raise NotImplementedError
 
     async def set_search_path(self, search_path: str = None) -> Self:
@@ -311,7 +312,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             SQL("SET search_path TO {search_path};").format(search_path=Identifier(search_path)))
         return self
 
-    def _replace(self, obj: SQLModel) -> Self:
+    def _replace(self, obj: AsyncSQLModel) -> Self:
         if not (primary_str := obj.primary_str):
             return self
         self.known_objects[primary_str] = obj
@@ -359,7 +360,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         self.deleted_objects.clear()
         return self
 
-    def expunge(self, obj: SQLModel) -> Self:
+    def expunge(self, obj: AsyncSQLModel) -> Self:
         if (primary_str := obj.primary_str) in self.known_objects:
             del self.known_objects[primary_str]
         else:
@@ -387,11 +388,11 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         get_event_loop().run_until_complete(self.close())
 
     async def create_all(self=None):
-        from pg_orm.core.sql_model import SQLModel
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
         async with (await self._connection).transaction():
             # Create all required types first, before creating the tables
             await self._create_types()
-            for _class in SQLModel.registry.get_models().values():
+            for _class in AsyncSQLModel.registry.get_models().values():
                 await self._create_class(_class=_class)
             await self._create_constraints()
             await self._create_table_args()
@@ -463,27 +464,27 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         self.expunge_all()  # TODO Should we actually clear?
         return self
 
-    async def _flush_obj(self, obj: SQLModel):
+    async def _flush_obj(self, obj: AsyncSQLModel):
         if obj.exists_in_db:
             await self._update(obj)
         else:
             await self._insert(obj)
 
-    async def _update(self, obj: SQLModel) -> Self:
+    async def _update(self, obj: AsyncSQLModel) -> Self:
         if not (statement := obj.build_async_update(session=self)):
             return self
         await self.execute(statement)
         obj.object_persisted()
         return self
 
-    async def _insert(self, obj: SQLModel) -> Self:
+    async def _insert(self, obj: AsyncSQLModel) -> Self:
         insert = obj.build_async_insert(session=self)
         await self.execute(insert)
         obj.exists_in_db = True
         obj.object_persisted()
         return self._replace(obj)
 
-    def _delete(self, obj: SQLModel) -> Self:
+    def _delete(self, obj: AsyncSQLModel) -> Self:
         pass
 
     async def __aenter__(self):

@@ -1,3 +1,4 @@
+from inspect import isawaitable
 from typing import Type, MutableMapping, Any
 
 from psycopg.sql import SQL, Composable, Identifier, Composed
@@ -12,7 +13,7 @@ from pg_orm.core.session import DatabaseSession
 from pg_orm.core.table_args import Index, UniqueConstraint
 
 
-class SQLModel:
+class AsyncSQLModel:
     # Flag model as base class, which means it is not a database table itself but is inherited by other models
     __base_class__: bool = False
     __table_name__: str = None
@@ -41,11 +42,11 @@ class SQLModel:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def __init_subclass__(cls: Type["SQLModel"], **kwargs):
-        if not SQLModel.registry:
-            SQLModel.registry = Registry()
+    def __init_subclass__(cls: Type["AsyncSQLModel"], **kwargs):
+        if not AsyncSQLModel.registry:
+            AsyncSQLModel.registry = Registry()
         if cls.__table_name__:
-            SQLModel.registry.register_model(model_name=cls.__table_name__, model=cls)
+            AsyncSQLModel.registry.register_model(model_name=cls.__table_name__, model=cls)
         super().__init_subclass__(**kwargs)
 
     def __getattribute__(self, item):
@@ -119,8 +120,8 @@ class SQLModel:
     @classmethod
     def get_base_columns(cls, clone: bool = True) -> MutableMapping[str, Column]:
         for base in cls.mro():
-            if base is not cls and base.__base__ is ModelBase:
-                base: Type[ModelBase]
+            if base is not cls and base.__base__ is AsyncModelBase:
+                base: Type[AsyncModelBase]
                 return base.columns(clone=clone)
         return {}
 
@@ -177,9 +178,11 @@ class SQLModel:
     def inst_foreign_keys(self) -> dict[str, ForeignKey]:
         return {name: col for name, col in self._columns.items() if isinstance(col, ForeignKey)}
 
-    def set_defaults(self):
+    async def set_defaults(self):
         for col in self._columns.values():
-            col.get_value(apply_default=True)
+            val = col.get_value(apply_default=True)
+            if isawaitable(val):
+                await val
 
     @classmethod
     def build_create_sql(cls) -> Composed:
@@ -375,18 +378,18 @@ class SQLModel:
         return repr_str
 
 
-class ModelBase(SQLModel):
+class AsyncModelBase(AsyncSQLModel):
     __base_class__ = True
 
-    def __init_subclass__(cls: Type[SQLModel], **kwargs):
-        if not SQLModel.registry:
-            SQLModel.registry = Registry()
+    def __init_subclass__(cls: Type[AsyncSQLModel], **kwargs):
+        if not AsyncSQLModel.registry:
+            AsyncSQLModel.registry = Registry()
         cls._add_base_columns(_class=cls)
         if cls.__table_name__:
-            SQLModel.registry.register_model(model_name=cls.__table_name__, model=cls)
+            AsyncSQLModel.registry.register_model(model_name=cls.__table_name__, model=cls)
         super().__init_subclass__(**kwargs)
 
     @classmethod
-    def _add_base_columns(cls, *, _class: Type[SQLModel]):
+    def _add_base_columns(cls, *, _class: Type[AsyncSQLModel]):
         for column in cls.columns().values():
             setattr(_class, column.attr_name, column)

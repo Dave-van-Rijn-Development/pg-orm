@@ -7,15 +7,16 @@ from pg_orm.core.column_type import PGType
 
 if TYPE_CHECKING:
     from pg_orm.core.sql_model import SQLModel, ModelBase
+    from pg_orm.aio.async_sql_model import AsyncSQLModel
 
 
 class Registry:
     def __init__(self):
-        self._models: MutableMapping[str, Type[SQLModel]] = dict()
+        self._models: MutableMapping[str, Type[SQLModel | AsyncSQLModel]] = dict()
         self._types: MutableMapping[str, PGType] = dict()
         self._constraints: MutableMapping[str, Constraint] = dict()
 
-    def register_model(self, *, model_name: str, model: Type[SQLModel]):
+    def register_model(self, *, model_name: str, model: Type[SQLModel] | Type[AsyncSQLModel]):
         if model_name in self._models:
             if (current_model := self._models.get(model_name)) is not model:
                 raise ValueError(
@@ -45,10 +46,12 @@ class Registry:
     def get_constraints(self) -> MutableMapping[str, Constraint]:
         return self._constraints
 
-    def _initialize_model(self, cls: Type[SQLModel]):
+    def _initialize_model(self, cls: Type[SQLModel] | Type[AsyncSQLModel]):
         from pg_orm.core.sql_model import ModelBase
+        from pg_orm.aio.async_sql_model import AsyncModelBase
         for mro_class in cls.mro():
-            if mro_class.__base__ is ModelBase:
+            base_class = mro_class.__base__
+            if base_class is ModelBase or base_class is AsyncModelBase:
                 mro_class: Type[ModelBase]
                 _add_base_columns(base_class=mro_class, _class=cls)
         for col_name, col in cls.columns(clone=False).items():

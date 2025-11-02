@@ -10,13 +10,14 @@ from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Compo
 from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType, Integer, BigInteger
 from pg_orm.core.query_clause import QueryClause, Equals, NotIn, In, Between, NotEquals, Greater, GreaterEquals, Less, \
     LessEquals, Is, Alias
-
-if TYPE_CHECKING:
-    from pg_orm.core.sql_model import SQLModel
 from pg_orm.core.encryption import encrypt, decrypt
 from pg_orm.core.enums import CascadeAction
 from pg_orm.core.session import DatabaseSession
 from pg_orm.core.types import Queryable
+
+if TYPE_CHECKING:
+    from pg_orm.core.sql_model import SQLModel
+    from pg_orm.aio.async_sql_model import AsyncSQLModel
 
 
 class Column:
@@ -41,7 +42,7 @@ class Column:
 
         from pg_orm.core.sql_model import SQLModel
         self.table_class: Type[SQLModel] = kwargs.get('table_class', SQLModel)
-        self._class_instance: SQLModel | None = None
+        self._class_instance: SQLModel | AsyncSQLModel | None = None
 
     def clone(self) -> Self:
         column = self.__class__.__new__(self.__class__)
@@ -184,9 +185,10 @@ class EncryptedColumn(Column):
                 value = self._default
                 if callable(value):
                     value = value()
-                self._col_type.value = encrypt(self._col_type.string_parser(value))
+                if value is not None:
+                    self._col_type.value = encrypt(self._col_type.string_parser(value))
             return value
-        return self._col_type.parse_value(decrypt(self._col_type.get_value()))
+        return self._col_type.parse_value(decrypt(value))
 
     def set_value(self, value: ColType):
         if value == self.get_value(apply_default=False):
@@ -317,6 +319,8 @@ class Relationship(Column):
     def clone(self):
         clone = super().clone()
         clone.ref_table_name = self.ref_table_name
+        clone._value = self._value
+        clone._as_list = self._as_list
         return clone
 
     @property

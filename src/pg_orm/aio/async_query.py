@@ -13,9 +13,9 @@ from pg_orm.core.types import Selectable, Queryable
 from pg_orm.core.util import is_sql_model
 
 if TYPE_CHECKING:
-    from pg_orm.core.sql_model import SQLModel
     from pg_orm.core.column import Column, Relationship
     from pg_orm.aio.async_session import AsyncDatabaseSession
+    from pg_orm.aio.async_sql_model import AsyncSQLModel
 
 RT = TypeVar("RT")
 
@@ -89,7 +89,6 @@ class AsyncQuery(ABC):
         return await self._build_multiple_targets(result=result, return_types=return_types)
 
     async def _build_multiple_targets(self, result: dict, return_types: list):
-        from pg_orm.core.sql_model import SQLModel
         from pg_orm.core.column import Column
         ret_objects = dict()
         for ix, (key, value) in enumerate(result.items()):
@@ -102,7 +101,7 @@ class AsyncQuery(ABC):
             # noinspection PyProtectedMember
             ret_objects[ret_type_name]._build_from_db(**{key: value})
         for obj in ret_objects.values():
-            if isinstance(obj, SQLModel):
+            if isinstance(obj, AsyncSQLModel):
                 await self._session.add(obj)
         if len(ret_objects) == 1:
             return list(ret_objects.values())[0]
@@ -136,6 +135,7 @@ class AsyncQuery(ABC):
                  expand: bool = False, full_name: bool = False) -> str | Identifier | Composable | Placeholder:
         from pg_orm.core.column import Column
         from pg_orm.core.sql_model import SQLModel
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
         if obj is None:
             return SQL('NULL')
         if isinstance(obj, QueryClause):
@@ -155,7 +155,7 @@ class AsyncQuery(ABC):
         elif expand:
             columns = obj.selectable_columns()
             return SQL(', ').join([col.full_sql_name() for col in columns])
-        elif isclass(obj) and issubclass(obj, SQLModel):
+        elif isclass(obj) and issubclass(obj, (SQLModel, AsyncSQLModel)):
             return SQL('{}.{}').format(Identifier(obj.__schema__), Identifier(obj.__table_name__))
         if parameterize:
             # Untrusted string, parameterize
@@ -381,9 +381,9 @@ def _finalize_query(sql_parts: list[Composable], end_statement: bool = True):
 
 
 class AsyncInsert(AsyncReturnable, AsyncExecutable):
-    def __init__(self, *obj: Selectable | SQLModel, session: AsyncDatabaseSession):
+    def __init__(self, *obj: Selectable | AsyncSQLModel, session: AsyncDatabaseSession):
         super().__init__(session=session)
-        self._target: list[Selectable | SQLModel] = list(obj)
+        self._target: list[Selectable | AsyncSQLModel] = list(obj)
         self._columns: list[Selectable] = list()
         self._values: list[Any] = list()
         self._on_conflict_do_nothing = False
