@@ -99,10 +99,30 @@ class Date(ColumnType):
     pg_type = 'DATE'
     python_type = datetime.date
 
+    def __init__(self, *args, use_pydate: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if use_pydate:
+            try:
+                from dvrd_pydate import PyDate
+                self.python_type = PyDate
+            except ImportError:
+                raise Exception('The dvrd_pydate package is needed when using pydate. Install this package '
+                                'using pip install pg_orm[py_date] or by installing dvrd_pydate.')
+
 
 class DateTime(ColumnType):
     pg_type = 'TIMESTAMP'
     python_type = datetime.datetime
+
+    def __init__(self, *args, use_pydate: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if use_pydate:
+            try:
+                from dvrd_pydate import PyDateTime
+                self.python_type = PyDateTime
+            except ImportError:
+                raise Exception('The dvrd_pydate package is needed when using pydate. Install this package '
+                                'using pip install pg_orm[py_date] or by installing dvrd_pydate.')
 
 
 class Boolean(ColumnType):

@@ -10,6 +10,11 @@ dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 
+[project.optional-dependencies]
+pydate = [
+    'dvrd_pydate',
+]
+
 #[project.urls]
 #Homepage = ""
 
