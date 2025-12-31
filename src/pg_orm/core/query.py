@@ -165,6 +165,11 @@ class Query(ABC):
             return Placeholder(param_name)
         return Identifier(obj)
 
+    def __iter__(self):
+        self._session.execute(self)
+        for item in self._session:
+            yield self._build_result(result=item)
+
 
 class Joinable(Query, ABC):
     def __init__(self, *, session: DatabaseSession):
