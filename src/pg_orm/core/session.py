@@ -264,6 +264,8 @@ class DatabaseSession(metaclass=SessionMeta):
         if isinstance(sql, Query):
             sql, _params = sql.parse()
             params = [param | _params for param in (params or list())]
+        if params is None:
+            params = list()
         self.set_search_path()
         self._cursor.executemany(sql, params)
 
