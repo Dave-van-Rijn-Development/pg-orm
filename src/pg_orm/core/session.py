@@ -409,11 +409,19 @@ class DatabaseSession(metaclass=SessionMeta):
         return self
 
     def close(self=None):
+        exc: Exception | None = None
         if self.__cursor and not self.__cursor.closed:
-            self.commit()
+            # Exceptions can be raised during the commit phase, like unique index violations.
+            # We capture the exception to make sure we can close the connection before re-raising it.
+            try:
+                self.commit()
+            except Exception as ex:
+                exc = ex
             self.__cursor.close()
         if self.__connection and not self.__connection.closed:
             self.__connection.close()
+        if exc is not None:
+            raise exc
         return self
 
     def create_all(self=None):
