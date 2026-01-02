@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import atexit
-from asyncio import get_event_loop
 from collections import defaultdict
 from threading import local
-from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, overload
+from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable
 from weakref import WeakSet
 
 from psycopg import AsyncConnection, AsyncCursor
-from psycopg.rows import dict_row, tuple_row
+from psycopg.rows import dict_row, tuple_row, DictRow
 from psycopg.sql import Composed, Composable, SQL, Identifier
 
 from pg_orm.aio.async_query import AsyncSelect, AsyncUpdate, AsyncQuery, AsyncInsert, AsyncDelete
@@ -91,99 +91,75 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return session
 
     if TYPE_CHECKING:
-        @overload
         def select(self: Any, *args, **kwargs) -> AsyncSelect:
             ...
 
-        @overload
         def update(self: Any, *args, **kwargs) -> AsyncUpdate:
             ...
 
-        @overload
         async def execute(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def execute_many(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def first(self: Any = None) -> dict[str, Any]:
             ...
 
-        @overload
         async def all(self: Any = None) -> list[dict[str, Any]]:
             ...
 
-        @overload
         async def scalar(self: Any = None) -> Any:
             ...
 
-        @overload
         async def fetch_many(self: Any, *args, **kwargs):
             ...
 
-        @overload
         async def row_count(self: Any = None) -> int:
             ...
 
-        @overload
         async def add(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def add_all(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         def insert(self: Any, *args, **kwargs) -> AsyncInsert:
             ...
 
-        @overload
         def delete(self: Any, *args, **kwargs) -> AsyncDelete:
             ...
 
-        @overload
         async def execute_delete(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         def expunge_all(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         def expunge(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def close(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         def close_sync(self: Any = None):
             ...
 
-        @overload
         async def create_all(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def drop_all(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def commit(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def flush(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def rollback(self: Any = None) -> AsyncDatabaseSession:
             ...
 
-        @overload
         async def set_search_path(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
             ...
 
@@ -246,7 +222,8 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         cursor = await self._cursor
         current_factory = cursor.row_factory
         cursor.row_factory = tuple_row
-        result = await cursor.fetchone()
+        # noinspection PyTypeChecker
+        result: tuple = await cursor.fetchone()
         cursor.row_factory = current_factory
         if not result:
             return None
@@ -332,7 +309,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self.__connection
 
     @property
-    async def _cursor(self) -> AsyncCursor:
+    async def _cursor(self) -> AsyncCursor[DictRow]:
         if not self.__cursor or self.__cursor.closed:
             conn = await self._connection
             self.__cursor = conn.cursor(row_factory=dict_row)
@@ -385,7 +362,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self
 
     def close_sync(self=None):
-        get_event_loop().run_until_complete(self.close())
+        asyncio.run(self.close())
 
     async def create_all(self=None):
         from pg_orm.aio.async_sql_model import AsyncSQLModel
