@@ -3,11 +3,11 @@ from __future__ import annotations
 import atexit
 from collections import defaultdict
 from threading import local
-from typing import Any, Self, TYPE_CHECKING, overload, MutableMapping, Type, Iterable
+from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable
 from weakref import WeakSet
 
 from psycopg import Cursor, Connection
-from psycopg.rows import dict_row, tuple_row
+from psycopg.rows import dict_row, tuple_row, DictRow
 from psycopg.sql import Composed, Composable, SQL, Identifier
 
 from pg_orm.core.query_clause import QueryParams, Distinct
@@ -133,95 +133,72 @@ class DatabaseSession(metaclass=SessionMeta):
         return self._connection
 
     if TYPE_CHECKING:
-        @overload
         def select(self: Any, *args, **kwargs) -> Select:
             ...
 
-        @overload
         def update(self: Any, *args, **kwargs) -> Update:
             ...
 
-        @overload
         def execute(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
-        @overload
         def execute_many(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
-        @overload
         def first(self: Any = None) -> dict[str, Any]:
             ...
 
-        @overload
         def all(self: Any = None) -> list[dict[str, Any]]:
             ...
 
-        @overload
         def scalar(self: Any = None) -> Any:
             ...
 
-        @overload
         def fetch_many(self: Any, *args, **kwargs):
             ...
 
-        @overload
         def row_count(self: Any = None) -> int:
             ...
 
-        @overload
         def add(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
-        @overload
         def add_all(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
-        @overload
         def insert(self: Any, *args, **kwargs) -> Insert:
             ...
 
-        @overload
         def delete(self: Any, *args, **kwargs) -> Delete:
             ...
 
-        @overload
         def execute_delete(self: Any, *args, **kwargs) -> Delete:
             ...
 
-        @overload
         def expunge_all(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def expunge(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
-        @overload
         def close(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def create_all(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def drop_all(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def commit(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def flush(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def rollback(self: Any = None) -> DatabaseSession:
             ...
 
-        @overload
         def set_search_path(self: Any, *args, **kwargs) -> DatabaseSession:
             ...
 
@@ -278,7 +255,8 @@ class DatabaseSession(metaclass=SessionMeta):
     def scalar(self=None):
         current_factory = self._cursor.row_factory
         self._cursor.row_factory = tuple_row
-        result = self._cursor.fetchone()
+        # noinspection PyTypeChecker
+        result: tuple = self._cursor.fetchone()
         self._cursor.row_factory = current_factory
         if not result:
             return None
@@ -367,7 +345,7 @@ class DatabaseSession(metaclass=SessionMeta):
         return self.__connection
 
     @property
-    def _cursor(self) -> Cursor:
+    def _cursor(self) -> Cursor[DictRow]:
         if not self.__cursor or self.__cursor.closed:
             self.__cursor = self._connection.cursor(row_factory=dict_row)
         return self.__cursor
