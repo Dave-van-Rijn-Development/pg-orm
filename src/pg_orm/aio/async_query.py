@@ -336,7 +336,8 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
 
     async def __aiter__(self) -> AsyncIterator[RT]:
         await self._session.execute(self)
-        return await self._session.__aiter__()
+        async for item in await self._session._cursor:
+            yield item
 
 
 class AsyncUpdate(AsyncReturnable):

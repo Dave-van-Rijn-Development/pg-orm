@@ -471,7 +471,8 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         await self.close()
 
     async def __aiter__(self):
-        return (await self._cursor).__aiter__()
+        async for item in await self._cursor:
+            yield item
 
     def __del__(self):
         self.close_sync()
