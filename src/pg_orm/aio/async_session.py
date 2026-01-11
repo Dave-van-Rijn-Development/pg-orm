@@ -17,7 +17,6 @@ from pg_orm.core.session import Credentials, session_proxy_attrs
 from pg_orm.core.types import Selectable
 
 if TYPE_CHECKING:
-    from pg_orm.core.sql_model import SQLModel
     from pg_orm.aio.async_sql_model import AsyncSQLModel
 
 
@@ -260,8 +259,8 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self
 
     def insert(self, obj: Selectable | AsyncSQLModel) -> AsyncInsert:
-        from pg_orm.core.sql_model import SQLModel
-        if isinstance(obj, SQLModel):
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        if isinstance(obj, AsyncSQLModel):
             return obj.build_async_insert(session=self)
         return AsyncInsert(obj, session=self)
 
@@ -376,11 +375,11 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self
 
     async def _create_types(self):
-        from pg_orm.core.sql_model import SQLModel
-        for _type in SQLModel.registry.get_types().values():
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        for _type in AsyncSQLModel.registry.get_types().values():
             await self.execute(_type.build_create_sql())
 
-    async def _create_class(self, *, _class: Type[SQLModel]):
+    async def _create_class(self, *, _class: Type[AsyncSQLModel]):
         if _class.__table_name__:
             await self.execute(_class.build_create_sql())
         if _class.__base_class__:
@@ -388,21 +387,21 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
                 await self._create_class(_class=_sub_class)
 
     async def _create_constraints(self):
-        from pg_orm.core.sql_model import SQLModel
-        for constraint in SQLModel.registry.get_constraints().values():
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        for constraint in AsyncSQLModel.registry.get_constraints().values():
             await self.execute(constraint.build_create_sql())
 
     async def _create_table_args(self):
-        from pg_orm.core.sql_model import SQLModel
-        for _class in SQLModel.registry.get_models().values():
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        for _class in AsyncSQLModel.registry.get_models().values():
             if not _class.__table_args__:
                 continue
             for obj in _class.__table_args__:
                 await self.execute(obj.build_create_sql())
 
     async def drop_all(self=None):
-        from pg_orm.core.sql_model import SQLModel
-        registry = SQLModel.registry
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        registry = AsyncSQLModel.registry
         await self._drop_table_args()
         for constraint in registry.get_constraints().values():
             await self.execute(constraint.build_drop_sql())
@@ -413,8 +412,8 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self
 
     async def _drop_table_args(self):
-        from pg_orm.core.sql_model import SQLModel
-        for _class in SQLModel.registry.get_models().values():
+        from pg_orm.aio.async_sql_model import AsyncSQLModel
+        for _class in AsyncSQLModel.registry.get_models().values():
             if not _class.__table_args__:
                 continue
             for obj in _class.__table_args__:

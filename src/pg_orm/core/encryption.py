@@ -9,6 +9,12 @@ class Encryption:
 
     @staticmethod
     def configure(*, secret: str):
+        """
+        Set the global encryption secret.
+        Secret can be generated using `openssl rand -hex 32`
+        :param secret:
+        :return:
+        """
         Encryption._secret = secret.encode()
 
     def __init__(self):
