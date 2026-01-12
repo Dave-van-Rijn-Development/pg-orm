@@ -4,7 +4,7 @@ import asyncio
 import atexit
 from collections import defaultdict
 from threading import local
-from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable
+from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast
 from weakref import WeakSet
 
 from psycopg import AsyncConnection, AsyncCursor
@@ -369,7 +369,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             # Create all required types first, before creating the tables
             await self._create_types()
             for _class in AsyncSQLModel.registry.get_models().values():
-                await self._create_class(_class=_class)
+                await self._create_class(_class=cast(Type[AsyncSQLModel], cast(object, _class)))
             await self._create_constraints()
             await self._create_table_args()
         return self
@@ -436,8 +436,9 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         return self
 
     async def rollback(self=None):
-        await (await self._connection).rollback()
-        self.expunge_all()  # TODO Should we actually clear?
+        conn = await self._connection
+        await conn.rollback()
+        self.expunge_all()
         return self
 
     async def _flush_obj(self, obj: AsyncSQLModel):
