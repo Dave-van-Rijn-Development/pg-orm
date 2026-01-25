@@ -41,6 +41,7 @@ session_proxy_attrs = (
     'execute_many',
     'first',
     'all',
+    'add_all',
     'scalar',
     'fetch_many',
     'row_count',
