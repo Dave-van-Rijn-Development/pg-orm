@@ -159,9 +159,6 @@ class Column:
     def is_(self, other):
         # TODO Test if other = None is correctly converted to IS NULL
         return QueryClause(operator=Is(left=self.full_sql_name(), right=other))
-        # if other is None:
-        #     return SQL('{} is NULL').format(self.full_sql_name())
-        # return SQL('{} is {}').format(self.full_sql_name(), Literal(other))
 
 
 def _other_value(other) -> tuple[Composable, Any]:

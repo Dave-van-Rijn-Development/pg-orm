@@ -35,13 +35,19 @@ class Operator(ABC):
         return SQL('{} {} {}').format(left, self.parse(), right)
 
 
-def _transform_queryable(*, value: "Queryable | QueryClause | None", params: QueryParams) -> tuple[Composable, QueryParams]:
+def _transform_queryable(*, value: "Queryable | QueryClause | None", params: QueryParams) -> \
+        tuple[Composable, QueryParams]:
     from pg_orm.core.sql_model import SQLModel
     from pg_orm.core.column import Column
     from pg_orm.core.bind_param import BindParam
     if value is None:
         return SQL('NULL'), params
-    if isinstance(value, Composable):
+    elif isinstance(value, bool):
+        if value:
+            return SQL('TRUE'), params
+        else:
+            return SQL('FALSE'), params
+    elif isinstance(value, Composable):
         return value, params
     elif value == type(SQLModel):
         return SQL('{}.*').format(Identifier(value.__table_name__)), params
