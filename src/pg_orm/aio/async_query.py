@@ -6,6 +6,7 @@ from inspect import isclass
 from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, AsyncIterator, Self
 
 from psycopg.sql import Composable, Composed, SQL, Identifier, Placeholder, Literal
+from psycopg.types.json import Jsonb
 
 from pg_orm.core.bind_param import BindParam
 from pg_orm.core.query_clause import QueryClause, QueryParams, Join, Distinct, Operator
@@ -161,6 +162,8 @@ class AsyncQuery(ABC):
             # Untrusted string, parameterize
             if isinstance(obj, BindParam):
                 return Placeholder(obj.name)
+            if isinstance(obj, dict):
+                obj = Jsonb(obj)
             param_name = self._params.set_param(obj)
             return Placeholder(param_name)
         return Identifier(obj)
