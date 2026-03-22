@@ -379,7 +379,8 @@ class Select(Joinable, Executable, Generic[RT]):
         return self._session.__iter__()
 
 
-CombineArg: TypeAlias = TypeLiteral['UNION', 'UNION ALL', 'INTERSECT', 'INTERSECT ALL', 'EXCEPT', 'EXCEPT ALL']
+CombineArg: TypeAlias = TypeLiteral[
+    'UNION', 'UNION ALL', 'INTERSECT', 'INTERSECT ALL', 'EXCEPT', 'EXCEPT ALL']  # noqa: F722, F821
 
 
 @dataclass(kw_only=True, frozen=True)
