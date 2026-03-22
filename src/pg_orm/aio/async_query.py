@@ -3,12 +3,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from inspect import isclass
-from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, AsyncIterator, Self
+from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, AsyncIterator, Self, \
+    cast, Sequence
 
 from psycopg.sql import Composable, Composed, SQL, Identifier, Placeholder, Literal
 from psycopg.types.json import Jsonb
 
 from pg_orm.core.bind_param import BindParam
+from pg_orm.core.query import CombineParams
 from pg_orm.core.query_clause import QueryClause, QueryParams, Join, Distinct, Operator
 from pg_orm.core.types import Selectable, Queryable
 from pg_orm.core.util import is_sql_model
@@ -27,6 +29,7 @@ class AsyncQuery(ABC):
         self._where: list[QueryClause | Operator | Composable] = list()
         self._target: list[Selectable] = list()
         self._params = QueryParams()
+        self._end_statement: bool = True
 
     @abstractmethod
     def parse(self) -> tuple[Composed, QueryParams]:
@@ -243,15 +246,15 @@ class AsyncReturnable(AsyncQuery, ABC):
 
 
 class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
-    def __init__(self, *obj: Selectable, session: AsyncDatabaseSession):
+    def __init__(self, *obj: Selectable, session: AsyncDatabaseSession, **kwargs):
         super().__init__(session=session)
-        self._select: list[Queryable] = list(obj)
-        self._group_by: list[Selectable] = list()
-        self._order_by: list[Selectable] = list()
-        self._limit: int | None = None
-        self._offset: int | None = None
-        self._as_exists: bool = False
-        self._distinct_on: list[Selectable] = list()
+        self._select: list[Queryable] = kwargs.get('select', list(obj))
+        self._group_by: list[Selectable] = kwargs.get('group_by', list())
+        self._order_by: list[Selectable] = kwargs.get('order_by', list())
+        self._limit: int | None = kwargs.get('limit')
+        self._offset: int | None = kwargs.get('offset', None)
+        self._as_exists: bool = kwargs.get('as_exists', False)
+        self._distinct_on: list[Selectable] = kwargs.get('distinct_on', list())
 
     def select(self, *obj: Queryable) -> AsyncSelect[RT]:
         self._select.extend(obj)
@@ -275,14 +278,49 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
 
     async def exists(self) -> bool:
         self._as_exists = True
+        self._end_statement = False
         return await self.scalar()
 
     def distinct_on(self, *obj: Selectable) -> AsyncSelect[RT]:
-        self._distinct_on = obj
+        self._distinct_on = list(obj)
         return self
 
-    def parse(self) -> tuple[Composed, QueryParams]:
+    def union(self, *objs: AsyncSelect[RT], parenthesise: bool = True) -> AsyncCombiningSelect[RT]:
+        return self._build_combining_query(objs=objs,
+                                           combine_params=CombineParams(combine_arg='UNION', parenthesise=parenthesise))
+
+    def union_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='UNION ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def intersect(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT',
+                                                                                   parenthesise=parenthesise))
+
+    def intersect_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def except_(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT',
+                                                                                   parenthesise=parenthesise))
+
+    def except_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def _build_combining_query(self, *, objs: Sequence[AsyncSelect[RT]], combine_params: CombineParams):
+        return AsyncCombiningSelect(combine_selects=list(objs), combine_params=combine_params, session=self._session,
+                                    group_by=self._group_by, order_by=self._order_by, limit=self._limit,
+                                    offset=self._offset, as_exists=self._as_exists, distinct_on=self._distinct_on,
+                                    select=self._select, target=self._target, where=self._where,
+                                    end_statement=self._end_statement)
+
+    def parse(self, params: QueryParams = None) -> tuple[Composed, QueryParams]:
         sql_parts: list[Composable] = []
+        # Allow overriding params for multiple query constructs
+        if params is not None:
+            self._params = params
 
         if select_clause := self._build_parts(parts=self._select, expand=True):
             if self._distinct_on:
@@ -321,7 +359,7 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
             statement = SQL('OFFSET {offset}').format(offset=offset_clause)
             sql_parts.append(statement)
 
-        query = _finalize_query(sql_parts, end_statement=not self._as_exists)
+        query = _finalize_query(sql_parts, end_statement=self._end_statement)
         if self._as_exists:
             query = SQL("SELECT EXISTS ({});").format(query)
         return query, self._params
@@ -341,6 +379,62 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
         await self._session.execute(self)
         async for item in await self._session._cursor:
             yield item
+
+
+class AsyncCombiningSelect(AsyncSelect[RT]):
+    def __init__(self, *args, combine_selects: list[AsyncSelect[RT]], combine_params: CombineParams, **kwargs):
+        super().__init__(*args, **kwargs)
+        for key, value in kwargs.items():
+            setattr(self, '_' + key, value)
+        self._combine_selects: list[tuple[list[AsyncSelect[RT]], CombineParams]] = [
+            (list(combine_selects), combine_params)]
+        self._end_statement = False
+        self._is_root_statement = True
+        self._parenthesize = combine_params.parenthesise
+
+    def union(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='UNION', parenthesise=parenthesise)))
+
+    def union_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='UNION ALL', parenthesise=parenthesise)))
+
+    def intersect(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='INTERSECT', parenthesise=parenthesise)))
+
+    def intersect_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append(
+            (list(objs), CombineParams(combine_arg='INTERSECT ALL', parenthesise=parenthesise)))
+
+    def except_(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='EXCEPT', parenthesise=parenthesise)))
+
+    def except_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='EXCEPT ALL', parenthesise=parenthesise)))
+
+    def parse(self, params: QueryParams = None) -> tuple[Composed, QueryParams]:
+        if params is not None:
+            self._params = params
+        self_statement, self._params = super().parse()
+        if self._parenthesize:
+            self_statement = SQL('(') + self_statement + SQL(')')
+        full_statement = self_statement
+        for (selects, params) in self._combine_selects:
+            statements: list[Composed] = list()
+            joiner: LiteralString = cast(LiteralString, f' {params.combine_arg} ')
+            for select in selects:
+                # Replace params with our params to prevent duplicate param names
+                select._end_statement = False
+                if isinstance(select, AsyncCombiningSelect):
+                    select._is_root_statement = False
+                union_statement, _ = select.parse(params=self._params)
+                if params.parenthesise:
+                    union_statement = SQL('(') + union_statement + SQL(')')
+                statements.append(union_statement)
+            combined = SQL(joiner).join(statements)
+            full_statement += SQL(joiner) + combined
+        if self._is_root_statement:
+            full_statement += SQL(';')
+        return full_statement, self._params
 
 
 class AsyncUpdate(AsyncReturnable):

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import namedtuple
+from dataclasses import dataclass
 from inspect import isclass
-from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, Iterator
+from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, Iterator, TypeAlias, \
+    Literal as TypeLiteral, cast, Sequence
 
 from psycopg.sql import Composable, Composed, SQL, Identifier, Placeholder, Literal
 from psycopg.types.json import Jsonb
@@ -286,6 +288,36 @@ class Select(Joinable, Executable, Generic[RT]):
         self._distinct_on = obj
         return self
 
+    def union(self, *objs: Select[RT], parenthesise: bool = True) -> CombiningSelect[RT]:
+        return self._build_combining_query(objs=objs,
+                                           combine_params=CombineParams(combine_arg='UNION', parenthesise=parenthesise))
+
+    def union_all(self, *objs: Select[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='UNION ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def intersect(self, *objs: Select[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT',
+                                                                                   parenthesise=parenthesise))
+
+    def intersect_all(self, *objs: Select[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def except_(self, *objs: Select[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT',
+                                                                                   parenthesise=parenthesise))
+
+    def except_all(self, *objs: Select[RT], parenthesise: bool = True):
+        return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT ALL',
+                                                                                   parenthesise=parenthesise))
+
+    def _build_combining_query(self, *, objs: Sequence[Select[RT]], combine_params: CombineParams):
+        return CombiningSelect(combine_selects=list(objs), combine_params=combine_params, session=self._session,
+                               group_by=self._group_by, order_by=self._order_by, limit=self._limit, offset=self._offset,
+                               as_exists=self._as_exists, distinct_on=self._distinct_on, select=self._select,
+                               target=self._target, where=self._where, end_statement=self._end_statement)
+
     def parse(self) -> tuple[Composed, QueryParams]:
         sql_parts: list[Composable] = []
 
@@ -345,6 +377,71 @@ class Select(Joinable, Executable, Generic[RT]):
     def __iter__(self) -> Iterator[RT]:
         self._session.execute(self)
         return self._session.__iter__()
+
+
+CombineArg: TypeAlias = TypeLiteral['UNION', 'UNION ALL', 'INTERSECT', 'INTERSECT ALL', 'EXCEPT', 'EXCEPT ALL']
+
+
+@dataclass(kw_only=True, frozen=True)
+class CombineParams:
+    combine_arg: CombineArg
+    parenthesise: bool = True
+
+
+class CombiningSelect(Select[RT]):
+    def __init__(self, *args, combine_selects: list[Select[RT]], combine_params: CombineParams, **kwargs):
+        super().__init__(*args, **kwargs)
+        for key, value in kwargs.items():
+            setattr(self, '_' + key, value)
+        self._combine_selects: list[tuple[list[Select[RT]], CombineParams]] = [
+            (list(combine_selects), combine_params)]
+        self._end_statement = False
+        self._is_root_statement = True
+        self._parenthesize = combine_params.parenthesise
+
+    def union(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='UNION', parenthesise=parenthesise)))
+
+    def union_all(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='UNION ALL', parenthesise=parenthesise)))
+
+    def intersect(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='INTERSECT', parenthesise=parenthesise)))
+
+    def intersect_all(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append(
+            (list(objs), CombineParams(combine_arg='INTERSECT ALL', parenthesise=parenthesise)))
+
+    def except_(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='EXCEPT', parenthesise=parenthesise)))
+
+    def except_all(self, *objs: Select[RT], parenthesise: bool = True):
+        self._combine_selects.append((list(objs), CombineParams(combine_arg='EXCEPT ALL', parenthesise=parenthesise)))
+
+    def parse(self, params: QueryParams = None) -> tuple[Composed, QueryParams]:
+        if params is not None:
+            self._params = params
+        self_statement, self._params = super().parse()
+        if self._parenthesize:
+            self_statement = SQL('(') + self_statement + SQL(')')
+        full_statement = self_statement
+        for (selects, params) in self._combine_selects:
+            statements: list[Composed] = list()
+            joiner: LiteralString = cast(LiteralString, f' {params.combine_arg} ')
+            for select in selects:
+                # Replace params with our params to prevent duplicate param names
+                select._end_statement = False
+                if isinstance(select, CombiningSelect):
+                    select._is_root_statement = False
+                union_statement, _ = select.parse(params=self._params)
+                if params.parenthesise:
+                    union_statement = SQL('(') + union_statement + SQL(')')
+                statements.append(union_statement)
+            combined = SQL(joiner).join(statements)
+            full_statement += SQL(joiner) + combined
+        if self._is_root_statement:
+            full_statement += SQL(';')
+        return full_statement, self._params
 
 
 class Update(Returnable):

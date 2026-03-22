@@ -9,7 +9,7 @@ from psycopg.sql import Identifier, SQL, Composable, Literal, Placeholder, Compo
 
 from pg_orm.core.column_type import ColumnType, ColType, ForeignColumnType, RelationColumnType, Integer, BigInteger
 from pg_orm.core.query_clause import QueryClause, Equals, NotIn, In, Between, NotEquals, Greater, GreaterEquals, Less, \
-    LessEquals, Is, Alias
+    LessEquals, Is, Alias, Like, ILike
 from pg_orm.core.encryption import encrypt, decrypt
 from pg_orm.core.enums import CascadeAction
 from pg_orm.core.session import DatabaseSession
@@ -159,6 +159,12 @@ class Column:
     def is_(self, other):
         # TODO Test if other = None is correctly converted to IS NULL
         return QueryClause(operator=Is(left=self.full_sql_name(), right=other))
+
+    def like(self, other: str):
+        return QueryClause(operator=Like(left=self.full_sql_name(), right=other))
+
+    def ilike(self, other: str):
+        return QueryClause(operator=ILike(left=self.full_sql_name(), right=other))
 
 
 def _other_value(other) -> tuple[Composable, Any]:

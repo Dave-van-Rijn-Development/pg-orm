@@ -9,5 +9,5 @@ if TYPE_CHECKING:
     from pg_orm.core.bind_param import BindParam
     from pg_orm.core.query_clause import Distinct, Operator
 
-type Selectable = Type[SQLModel] | Type[AsyncSQLModel] | Column | Composable | str | Distinct
+type Selectable = Type[SQLModel] | Type[AsyncSQLModel] | Column | Composable | str | Type[bool] | Distinct
 type Queryable = Selectable | str | int | float | bool | BindParam | Distinct | Operator

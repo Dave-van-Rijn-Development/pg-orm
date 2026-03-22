@@ -253,7 +253,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             self.created_objects.append(obj)
         return self
 
-    async def add_all(self, objs: Iterable[AsyncSQLModel]) -> Self:
+    async def add_all(self, *objs: Iterable[AsyncSQLModel]) -> Self:
         for obj in objs:
             await self.add(obj)
         return self
