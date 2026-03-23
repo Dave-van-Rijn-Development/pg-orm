@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from datetime import date
 from enum import Enum
@@ -42,7 +40,7 @@ class Column:
 
         from pg_orm.core.sql_model import SQLModel
         self.table_class: Type[SQLModel] = kwargs.get('table_class', SQLModel)
-        self._class_instance: SQLModel | AsyncSQLModel | None = None
+        self._class_instance: "SQLModel | AsyncSQLModel | None" = None
 
     def clone(self) -> Self:
         column = self.__class__.__new__(self.__class__)
@@ -327,7 +325,7 @@ class Relationship(Column):
         return clone
 
     @property
-    def ref_table_cls(self) -> Type[SQLModel] | None:
+    def ref_table_cls(self) -> Type["SQLModel"] | None:
         if not (registry := self.table_class.registry):
             return None
         return registry.get_model(model_name=self.ref_table_name)
@@ -362,12 +360,12 @@ class Relationship(Column):
                 return column
         return None
 
-    def get_value(self, apply_default: bool = True) -> SQLModel:
+    def get_value(self, apply_default: bool = True) -> "SQLModel":
         if self._value is not None:
             return self._value
         return self._get_from_session()
 
-    def set_value(self, value: SQLModel):
+    def set_value(self, value: "SQLModel"):
         if value == self.get_value(apply_default=False):
             return
         if not (ref_cls := self.ref_table_cls):
@@ -379,7 +377,7 @@ class Relationship(Column):
     def purge(self):
         self._value = None
 
-    def _get_from_session(self) -> SQLModel | None:
+    def _get_from_session(self) -> "SQLModel | None":
         if not (registry := self.table_class.registry):
             raise ValueError(f'Table class {self.table_class.__name__} is not registered')
         if not (ref_cls := registry.get_model(model_name=self.ref_table_name)):
@@ -390,8 +388,8 @@ class Relationship(Column):
             self._value = self._get_children_from_session(fk_column=ref_fk_column, ref_cls=ref_cls)
         return self._value
 
-    def _get_parent_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
-            SQLModel | list[SQLModel] | None:
+    def _get_parent_from_session(self, *, fk_column: ForeignKey, ref_cls: Type["SQLModel"]) -> \
+            "SQLModel | list[SQLModel] | None":
         if not (ref_id := fk_column.get_value(apply_default=False)):
             return None
         select_list = self._as_list if self._as_list is not None else False
@@ -412,8 +410,8 @@ class Relationship(Column):
             return query.all()
         return query.first()
 
-    def _get_children_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
-            SQLModel | list[SQLModel] | None:
+    def _get_children_from_session(self, *, fk_column: ForeignKey, ref_cls: Type["SQLModel"]) -> \
+            "SQLModel | list[SQLModel] | None":
         if not (pk_column := self.pk_column):
             return None
         if not (ref_id := pk_column.get_value(apply_default=False)):

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import atexit
 from collections import defaultdict
@@ -43,14 +41,14 @@ class AsyncSessionMeta(type):
 
 
 class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
-    __instances__: defaultdict[type, WeakSet[AsyncDatabaseSession]] = defaultdict(WeakSet)
+    __instances__: defaultdict[type, WeakSet[Self]] = defaultdict(WeakSet)
     _auto_commit: bool = True
     # Used to set the search path before each query. This should normally not be needed, but in some cases the
     # search_path gets left behind in an invalid state, like when using postgres_fdw.
     _ensure_path: str | None = None
-    known_objects: MutableMapping[str, AsyncSQLModel] = dict()
-    created_objects: list[AsyncSQLModel] = list()
-    deleted_objects: MutableMapping[str, AsyncSQLModel] = dict()
+    known_objects: MutableMapping[str, "AsyncSQLModel"] = dict()
+    created_objects: list["AsyncSQLModel"] = list()
+    deleted_objects: MutableMapping[str, "AsyncSQLModel"] = dict()
 
     def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
                 isolate: bool = False, ensure_path: str = None) -> Self:
@@ -96,10 +94,10 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         def update(self: Any, *args, **kwargs) -> AsyncUpdate:
             ...
 
-        async def execute(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def execute(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
-        async def execute_many(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def execute_many(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
         async def first(self: Any = None) -> dict[str, Any]:
@@ -117,10 +115,10 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         async def row_count(self: Any = None) -> int:
             ...
 
-        async def add(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def add(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
-        async def add_all(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def add_all(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
         def insert(self: Any, *args, **kwargs) -> AsyncInsert:
@@ -129,37 +127,37 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         def delete(self: Any, *args, **kwargs) -> AsyncDelete:
             ...
 
-        async def execute_delete(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def execute_delete(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
-        def expunge_all(self: Any = None) -> AsyncDatabaseSession:
+        def expunge_all(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        def expunge(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        def expunge(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
-        async def close(self: Any = None) -> AsyncDatabaseSession:
+        async def close(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
         def close_sync(self: Any = None):
             ...
 
-        async def create_all(self: Any = None) -> AsyncDatabaseSession:
+        async def create_all(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        async def drop_all(self: Any = None) -> AsyncDatabaseSession:
+        async def drop_all(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        async def commit(self: Any = None) -> AsyncDatabaseSession:
+        async def commit(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        async def flush(self: Any = None) -> AsyncDatabaseSession:
+        async def flush(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        async def rollback(self: Any = None) -> AsyncDatabaseSession:
+        async def rollback(self: Any = None) -> "AsyncDatabaseSession":
             ...
 
-        async def set_search_path(self: Any, *args, **kwargs) -> AsyncDatabaseSession:
+        async def set_search_path(self: Any, *args, **kwargs) -> "AsyncDatabaseSession":
             ...
 
     def test_connect(self):
@@ -236,7 +234,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         cursor = await self._cursor
         return cursor.rowcount
 
-    async def add(self, obj: AsyncSQLModel) -> Self:
+    async def add(self, obj: "AsyncSQLModel") -> Self:
         """
         Add given object to the Python session. This does not insert the object into the database directly,
         but will insert/update the object when the session flushes.
@@ -253,18 +251,18 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             self.created_objects.append(obj)
         return self
 
-    async def add_all(self, *objs: Iterable[AsyncSQLModel]) -> Self:
+    async def add_all(self, *objs: Iterable["AsyncSQLModel"]) -> Self:
         for obj in objs:
             await self.add(obj)
         return self
 
-    def insert(self, obj: Selectable | AsyncSQLModel) -> AsyncInsert:
+    def insert(self, obj: "Selectable | AsyncSQLModel") -> AsyncInsert:
         from pg_orm.aio.async_sql_model import AsyncSQLModel
         if isinstance(obj, AsyncSQLModel):
             return obj.build_async_insert(session=self)
         return AsyncInsert(obj, session=self)
 
-    def delete(self, obj: AsyncSQLModel) -> Self:
+    def delete(self, obj: "AsyncSQLModel") -> Self:
         primary_str = obj.primary_str
         if primary_str in self.known_objects:
             del self.known_objects[primary_str]
@@ -276,7 +274,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             return self
         self.deleted_objects[obj.primary_str] = obj
 
-    async def execute_delete(self, obj: AsyncSQLModel) -> AsyncDelete:
+    async def execute_delete(self, obj: "AsyncSQLModel") -> AsyncDelete:
         raise NotImplementedError
 
     async def set_search_path(self, search_path: str = None) -> Self:
@@ -288,7 +286,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             SQL("SET search_path TO {search_path};").format(search_path=Identifier(search_path)))
         return self
 
-    def _replace(self, obj: AsyncSQLModel) -> Self:
+    def _replace(self, obj: "AsyncSQLModel") -> Self:
         if not (primary_str := obj.primary_str):
             return self
         self.known_objects[primary_str] = obj
@@ -336,7 +334,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         self.deleted_objects.clear()
         return self
 
-    def expunge(self, obj: AsyncSQLModel) -> Self:
+    def expunge(self, obj: "AsyncSQLModel") -> Self:
         if (primary_str := obj.primary_str) in self.known_objects:
             del self.known_objects[primary_str]
         else:
@@ -379,7 +377,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         for _type in AsyncSQLModel.registry.get_types().values():
             await self.execute(_type.build_create_sql())
 
-    async def _create_class(self, *, _class: Type[AsyncSQLModel]):
+    async def _create_class(self, *, _class: Type["AsyncSQLModel"]):
         if _class.__table_name__:
             await self.execute(_class.build_create_sql())
         if _class.__base_class__:
@@ -441,27 +439,27 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         self.expunge_all()
         return self
 
-    async def _flush_obj(self, obj: AsyncSQLModel):
+    async def _flush_obj(self, obj: "AsyncSQLModel"):
         if obj.exists_in_db:
             await self._update(obj)
         else:
             await self._insert(obj)
 
-    async def _update(self, obj: AsyncSQLModel) -> Self:
+    async def _update(self, obj: "AsyncSQLModel") -> Self:
         if not (statement := obj.build_async_update(session=self)):
             return self
         await self.execute(statement)
         obj.object_persisted()
         return self
 
-    async def _insert(self, obj: AsyncSQLModel) -> Self:
+    async def _insert(self, obj: "AsyncSQLModel") -> Self:
         insert = obj.build_async_insert(session=self)
         await self.execute(insert)
         obj.exists_in_db = True
         obj.object_persisted()
         return self._replace(obj)
 
-    def _delete(self, obj: AsyncSQLModel) -> Self:
+    def _delete(self, obj: "AsyncSQLModel") -> Self:
         pass
 
     async def __aenter__(self):

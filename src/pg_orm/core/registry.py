@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from typing import MutableMapping, Type, TYPE_CHECKING, cast
 
@@ -12,11 +11,11 @@ if TYPE_CHECKING:
 
 class Registry:
     def __init__(self):
-        self._models: MutableMapping[str, Type[SQLModel | AsyncSQLModel]] = dict()
+        self._models: MutableMapping[str, Type["SQLModel | AsyncSQLModel"]] = dict()
         self._types: MutableMapping[str, PGType] = dict()
         self._constraints: MutableMapping[str, Constraint] = dict()
 
-    def register_model(self, *, model_name: str, model: Type[SQLModel] | Type[AsyncSQLModel]):
+    def register_model(self, *, model_name: str, model: Type["SQLModel | AsyncSQLModel"]):
         if model_name in self._models:
             if (current_model := self._models.get(model_name)) is not model:
                 raise ValueError(
@@ -32,12 +31,12 @@ class Registry:
     def register_constraint(self, *, constraint: Constraint):
         self._constraints[constraint.get_name()] = constraint
 
-    def get_model(self, model_name: str) -> Type[SQLModel]:
+    def get_model(self, model_name: str) -> Type["SQLModel"]:
         if model_name not in self._models:
             raise KeyError(f'No model registered with name {model_name}')
         return self._models.get(model_name)
 
-    def get_models(self) -> MutableMapping[str, Type[SQLModel]]:
+    def get_models(self) -> MutableMapping[str, Type["SQLModel"]]:
         return self._models
 
     def get_types(self) -> MutableMapping[str, PGType]:
@@ -46,7 +45,7 @@ class Registry:
     def get_constraints(self) -> MutableMapping[str, Constraint]:
         return self._constraints
 
-    def _initialize_model(self, cls: Type[SQLModel] | Type[AsyncSQLModel]):
+    def _initialize_model(self, cls: Type["SQLModel | AsyncSQLModel"]):
         from pg_orm.core.sql_model import ModelBase
         from pg_orm.aio.async_sql_model import AsyncModelBase
         for mro_class in cls.mro():
@@ -67,7 +66,7 @@ class Registry:
         cls.initialized = True
 
 
-def _add_base_columns(*, base_class: Type[ModelBase], _class: Type[SQLModel]):
+def _add_base_columns(*, base_class: Type["ModelBase"], _class: Type["SQLModel"]):
     for name, column in base_class.columns().items():
         if not name:
             continue

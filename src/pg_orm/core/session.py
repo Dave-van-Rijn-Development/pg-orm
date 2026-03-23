@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import atexit
 from collections import defaultdict
 from threading import local
@@ -10,12 +8,12 @@ from psycopg import Cursor, Connection
 from psycopg.rows import dict_row, tuple_row, DictRow
 from psycopg.sql import Composed, Composable, SQL, Identifier
 
+from pg_orm.core.query import Query, Select, Update, Insert, Delete
 from pg_orm.core.query_clause import QueryParams, Distinct
+from pg_orm.core.types import Selectable
 
 if TYPE_CHECKING:
     from pg_orm.core.sql_model import SQLModel
-from pg_orm.core.query import Query, Select, Update, Insert, Delete
-from pg_orm.core.types import Selectable
 
 
 class Credentials:
@@ -83,14 +81,14 @@ class SessionMeta(type):
 
 
 class DatabaseSession(metaclass=SessionMeta):
-    __instances__: defaultdict[type, WeakSet[DatabaseSession]] = defaultdict(WeakSet)
+    __instances__: defaultdict[type, WeakSet[Self]] = defaultdict(WeakSet)
     _auto_commit: bool = True
     # Used to set the search path before each query. This should normally not be needed, but in some cases the
     # search_path gets left behind in an invalid state, like when using postgres_fdw.
     _ensure_path: str | None = None
-    known_objects: MutableMapping[str, SQLModel] = dict()
-    created_objects: list[SQLModel] = list()
-    deleted_objects: MutableMapping[str, SQLModel] = dict()
+    known_objects: MutableMapping[str, "SQLModel"] = dict()
+    created_objects: list["SQLModel"] = list()
+    deleted_objects: MutableMapping[str, "SQLModel"] = dict()
 
     def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
                 isolate: bool = False, ensure_path: str = None) -> Self:
@@ -140,10 +138,10 @@ class DatabaseSession(metaclass=SessionMeta):
         def update(self: Any, *args, **kwargs) -> Update:
             ...
 
-        def execute(self: Any, *args, **kwargs) -> DatabaseSession:
+        def execute(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
-        def execute_many(self: Any, *args, **kwargs) -> DatabaseSession:
+        def execute_many(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
         def first(self: Any = None) -> dict[str, Any]:
@@ -161,10 +159,10 @@ class DatabaseSession(metaclass=SessionMeta):
         def row_count(self: Any = None) -> int:
             ...
 
-        def add(self: Any, *args, **kwargs) -> DatabaseSession:
+        def add(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
-        def add_all(self: Any, *args, **kwargs) -> DatabaseSession:
+        def add_all(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
         def insert(self: Any, *args, **kwargs) -> Insert:
@@ -176,31 +174,31 @@ class DatabaseSession(metaclass=SessionMeta):
         def execute_delete(self: Any, *args, **kwargs) -> Delete:
             ...
 
-        def expunge_all(self: Any = None) -> DatabaseSession:
+        def expunge_all(self: Any = None) -> "DatabaseSession":
             ...
 
-        def expunge(self: Any, *args, **kwargs) -> DatabaseSession:
+        def expunge(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
-        def close(self: Any = None) -> DatabaseSession:
+        def close(self: Any = None) -> "DatabaseSession":
             ...
 
-        def create_all(self: Any = None) -> DatabaseSession:
+        def create_all(self: Any = None) -> "DatabaseSession":
             ...
 
-        def drop_all(self: Any = None) -> DatabaseSession:
+        def drop_all(self: Any = None) -> "DatabaseSession":
             ...
 
-        def commit(self: Any = None) -> DatabaseSession:
+        def commit(self: Any = None) -> "DatabaseSession":
             ...
 
-        def flush(self: Any = None) -> DatabaseSession:
+        def flush(self: Any = None) -> "DatabaseSession":
             ...
 
-        def rollback(self: Any = None) -> DatabaseSession:
+        def rollback(self: Any = None) -> "DatabaseSession":
             ...
 
-        def set_search_path(self: Any, *args, **kwargs) -> DatabaseSession:
+        def set_search_path(self: Any, *args, **kwargs) -> "DatabaseSession":
             ...
 
     def select(self, *obj_type: Selectable) -> Select:
@@ -269,7 +267,7 @@ class DatabaseSession(metaclass=SessionMeta):
     def row_count(self=None) -> int:
         return self._cursor.rowcount
 
-    def add(self, obj: SQLModel) -> Self:
+    def add(self, obj: "SQLModel") -> Self:
         """
         Add given object to the Python session. This does not insert the object into the database directly,
         but will insert/update the object when the session flushes.
@@ -286,18 +284,18 @@ class DatabaseSession(metaclass=SessionMeta):
             self.created_objects.append(obj)
         return self
 
-    def add_all(self, objs: Iterable[SQLModel]) -> Self:
+    def add_all(self, objs: Iterable["SQLModel"]) -> Self:
         for obj in objs:
             self.add(obj)
         return self
 
-    def insert(self, obj: Selectable | SQLModel) -> Insert:
+    def insert(self, obj: "Selectable | SQLModel") -> Insert:
         from pg_orm.core.sql_model import SQLModel
         if isinstance(obj, SQLModel):
             return obj.build_insert(session=self)
         return Insert(obj, session=self)
 
-    def delete(self, obj: SQLModel) -> Self:
+    def delete(self, obj: "SQLModel") -> Self:
         primary_str = obj.primary_str
         if primary_str in self.known_objects:
             del self.known_objects[primary_str]
@@ -309,7 +307,7 @@ class DatabaseSession(metaclass=SessionMeta):
             return self
         self.deleted_objects[obj.primary_str] = obj
 
-    def execute_delete(self, obj: SQLModel) -> Delete:
+    def execute_delete(self, obj: "SQLModel") -> Delete:
         """
         Immediately emit a DELETE statement to the database.
         :param obj:
@@ -327,7 +325,7 @@ class DatabaseSession(metaclass=SessionMeta):
         self._cursor.execute(SQL("SET search_path TO {search_path};").format(search_path=Identifier(search_path)))
         return self
 
-    def _replace(self, obj: SQLModel) -> Self:
+    def _replace(self, obj: "SQLModel") -> Self:
         if not (primary_str := obj.primary_str):
             return self
         self.known_objects[primary_str] = obj
@@ -373,7 +371,7 @@ class DatabaseSession(metaclass=SessionMeta):
         self.deleted_objects.clear()
         return self
 
-    def expunge(self, obj: SQLModel) -> Self:
+    def expunge(self, obj: "SQLModel") -> Self:
         if (primary_str := obj.primary_str) in self.known_objects:
             del self.known_objects[primary_str]
         else:
@@ -421,7 +419,7 @@ class DatabaseSession(metaclass=SessionMeta):
         for _type in SQLModel.registry.get_types().values():
             self.execute(_type.build_create_sql())
 
-    def _create_class(self, *, _class: Type[SQLModel]):
+    def _create_class(self, *, _class: Type["SQLModel"]):
         if _class.__table_name__:
             self.execute(_class.build_create_sql())
         if _class.__base_class__:
@@ -482,25 +480,25 @@ class DatabaseSession(metaclass=SessionMeta):
         self.expunge_all()  # TODO Should we actually clear?
         return self
 
-    def _flush_obj(self, obj: SQLModel):
+    def _flush_obj(self, obj: "SQLModel"):
         if obj.exists_in_db:
             self._update(obj)
         else:
             self._insert(obj)
 
-    def _update(self, obj: SQLModel) -> Self:
+    def _update(self, obj: "SQLModel") -> Self:
         if not (statement := obj.build_update(session=self)):
             return self
         self.execute(statement)
         return self
 
-    def _insert(self, obj: SQLModel) -> Self:
+    def _insert(self, obj: "SQLModel") -> Self:
         insert = obj.build_insert(session=self)
         self.execute(insert)
         obj.exists_in_db = True
         return self._replace(obj)
 
-    def _delete(self, obj: SQLModel) -> Self:
+    def _delete(self, obj: "SQLModel") -> Self:
         pass
 
     def __enter__(self):

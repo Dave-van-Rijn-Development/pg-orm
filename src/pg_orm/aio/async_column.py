@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Type
 
 from psycopg.sql import Identifier, SQL
@@ -15,12 +13,12 @@ class AsyncRelationship(Relationship):
     def __init__(self, table_name: str, as_list: bool = None, **kwargs):
         super().__init__(table_name=table_name, as_list=as_list, **kwargs)
 
-    async def get_value(self, apply_default: bool = True) -> SQLModel:
+    async def get_value(self, apply_default: bool = True) -> "SQLModel":
         if self._value is not None:
             return self._value
         return await self._get_from_session()
 
-    async def set_value(self, value: SQLModel):
+    async def set_value(self, value: "SQLModel"):
         if value == await self.get_value(apply_default=False):
             return
         if not (ref_cls := self.ref_table_cls):
@@ -29,7 +27,7 @@ class AsyncRelationship(Relationship):
         if column := self.fk_column:
             column.set_value(ref_id)
 
-    async def _get_from_session(self) -> SQLModel | list[SQLModel] | None:
+    async def _get_from_session(self) -> "SQLModel | list[SQLModel] | None":
         if not (registry := self.table_class.registry):
             raise ValueError(f'Table class {self.table_class.__name__} is not registered')
         if not (ref_cls := registry.get_model(model_name=self.ref_table_name)):
@@ -40,8 +38,8 @@ class AsyncRelationship(Relationship):
             self._value = await self._get_children_from_session(fk_column=ref_fk_column, ref_cls=ref_cls)
         return self._value
 
-    async def _get_parent_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
-            SQLModel | list[SQLModel] | None:
+    async def _get_parent_from_session(self, *, fk_column: ForeignKey, ref_cls: Type["SQLModel"]) -> \
+            "SQLModel | list[SQLModel] | None":
         if not (ref_id := fk_column.get_value(apply_default=False)):
             return None
         select_list = self._as_list if self._as_list is not None else False
@@ -62,8 +60,8 @@ class AsyncRelationship(Relationship):
             return await query.all()
         return await query.first()
 
-    async def _get_children_from_session(self, *, fk_column: ForeignKey, ref_cls: Type[SQLModel]) -> \
-            SQLModel | list[SQLModel] | None:
+    async def _get_children_from_session(self, *, fk_column: ForeignKey, ref_cls: Type["SQLModel"]) -> \
+            "SQLModel | list[SQLModel] | None":
         if not (pk_column := self.pk_column):
             return None
         if not (ref_id := pk_column.get_value(apply_default=False)):

@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from dataclasses import dataclass
 from inspect import isclass
 from typing import LiteralString, TYPE_CHECKING, MutableMapping, Any, Generic, TypeVar, Iterator, TypeAlias, \
-    Literal as TypeLiteral, cast, Sequence
+    Literal as TypeLiteral, cast, Sequence, Self
 
 from psycopg.sql import Composable, Composed, SQL, Identifier, Placeholder, Literal
 from psycopg.types.json import Jsonb
@@ -24,7 +22,7 @@ RT = TypeVar("RT")
 
 
 class Query(ABC):
-    def __init__(self, *, session: DatabaseSession):
+    def __init__(self, *, session: "DatabaseSession"):
         self._session = session
         self._where: list[QueryClause | Operator | Composable] = list()
         self._target: list[Selectable] = list()
@@ -34,16 +32,16 @@ class Query(ABC):
     def parse(self) -> tuple[Composed, QueryParams]:
         raise NotImplementedError
 
-    def from_(self, *target: Selectable) -> Query:
+    def from_(self, *target: Selectable) -> Self:
         self._target.extend(target)
         return self
 
     if TYPE_CHECKING:
         # "Fool" type checkers
-        def where(self, *criteria: bool) -> Query:
+        def where(self, *criteria: bool) -> Self:
             ...
     else:
-        def where(self, *criteria: QueryClause | Operator | Composable) -> Query:
+        def where(self, *criteria: QueryClause | Operator | Composable) -> Self:
             self._where.extend(criteria)
             return self
 
@@ -177,12 +175,12 @@ class Query(ABC):
 
 
 class Joinable(Query, ABC):
-    def __init__(self, *, session: DatabaseSession):
+    def __init__(self, *, session: "DatabaseSession"):
         super().__init__(session=session)
         self._join: list[QueryClause | Composable] = list()
         self._join_targets: list[Selectable] = list()
 
-    def join(self, obj: Selectable, on: Composable | bool = None) -> Joinable:
+    def join(self, obj: Selectable, on: Composable | bool = None) -> Self:
         target = obj
         if isinstance(obj, Relationship):
             target = obj.ref_table_cls
@@ -200,7 +198,7 @@ class Joinable(Query, ABC):
         self._join.append(QueryClause(operator=Join(left=obj, right=on)))
         return self
 
-    def outer_join(self, obj: Selectable, on: Composable | bool) -> Joinable:
+    def outer_join(self, obj: Selectable, on: Composable | bool) -> Self:
         target = obj
         if isinstance(obj, Column):
             target = obj.table_class
@@ -216,7 +214,7 @@ class Joinable(Query, ABC):
 
 
 class Executable(Query, ABC):
-    def __init__(self, *, session: DatabaseSession):
+    def __init__(self, *, session: "DatabaseSession"):
         super().__init__(session=session)
 
     def execute(self):
@@ -225,11 +223,11 @@ class Executable(Query, ABC):
 
 
 class Returnable(Query, ABC):
-    def __init__(self, *, session: DatabaseSession):
+    def __init__(self, *, session: "DatabaseSession"):
         super().__init__(session=session)
         self._returning: list[Selectable] = list()
 
-    def returning(self, *obj: Selectable) -> Returnable:
+    def returning(self, *obj: Selectable) -> Self:
         self._returning.extend(obj)
         return self
 
@@ -250,7 +248,7 @@ class Returnable(Query, ABC):
 
 
 class Select(Joinable, Executable, Generic[RT]):
-    def __init__(self, *obj: Selectable, session: DatabaseSession):
+    def __init__(self, *obj: Selectable, session: "DatabaseSession"):
         super().__init__(session=session)
         self._select: list[Queryable] = list(obj)
         self._group_by: list[Selectable] = list()
@@ -260,23 +258,23 @@ class Select(Joinable, Executable, Generic[RT]):
         self._as_exists: bool = False
         self._distinct_on: list[Selectable] = list()
 
-    def select(self, *obj: Queryable) -> Select[RT]:
+    def select(self, *obj: Queryable) -> Self:
         self._select.extend(obj)
         return self
 
-    def group_by(self, *obj: Selectable) -> Select[RT]:
+    def group_by(self, *obj: Selectable) -> Self:
         self._group_by.extend(obj)
         return self
 
-    def order_by(self, *obj: Selectable) -> Select[RT]:
+    def order_by(self, *obj: Selectable) -> Self:
         self._order_by.extend(obj)
         return self
 
-    def limit(self, limit: int) -> Select[RT]:
+    def limit(self, limit: int) -> Self:
         self._limit = limit
         return self
 
-    def offset(self, offset: int) -> Select[RT]:
+    def offset(self, offset: int) -> Self:
         self._offset = offset
         return self
 
@@ -284,35 +282,35 @@ class Select(Joinable, Executable, Generic[RT]):
         self._as_exists = True
         return self.scalar()
 
-    def distinct_on(self, *obj: Selectable) -> Select[RT]:
+    def distinct_on(self, *obj: Selectable) -> Self:
         self._distinct_on = obj
         return self
 
-    def union(self, *objs: Select[RT], parenthesise: bool = True) -> CombiningSelect[RT]:
+    def union(self, *objs: Self, parenthesise: bool = True) -> "CombiningSelect[RT]":
         return self._build_combining_query(objs=objs,
                                            combine_params=CombineParams(combine_arg='UNION', parenthesise=parenthesise))
 
-    def union_all(self, *objs: Select[RT], parenthesise: bool = True):
+    def union_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='UNION ALL',
                                                                                    parenthesise=parenthesise))
 
-    def intersect(self, *objs: Select[RT], parenthesise: bool = True):
+    def intersect(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT',
                                                                                    parenthesise=parenthesise))
 
-    def intersect_all(self, *objs: Select[RT], parenthesise: bool = True):
+    def intersect_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT ALL',
                                                                                    parenthesise=parenthesise))
 
-    def except_(self, *objs: Select[RT], parenthesise: bool = True):
+    def except_(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT',
                                                                                    parenthesise=parenthesise))
 
-    def except_all(self, *objs: Select[RT], parenthesise: bool = True):
+    def except_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT ALL',
                                                                                    parenthesise=parenthesise))
 
-    def _build_combining_query(self, *, objs: Sequence[Select[RT]], combine_params: CombineParams):
+    def _build_combining_query(self, *, objs: Sequence[Self], combine_params: "CombineParams"):
         return CombiningSelect(combine_selects=list(objs), combine_params=combine_params, session=self._session,
                                group_by=self._group_by, order_by=self._order_by, limit=self._limit, offset=self._offset,
                                as_exists=self._as_exists, distinct_on=self._distinct_on, select=self._select,
@@ -446,12 +444,12 @@ class CombiningSelect(Select[RT]):
 
 
 class Update(Returnable):
-    def __init__(self, *obj: Selectable, session: DatabaseSession):
+    def __init__(self, *obj: Selectable, session: "DatabaseSession"):
         super().__init__(session=session)
         self._target: list[Selectable] = list(obj)
         self._set: MutableMapping[Selectable, Any] = dict()
 
-    def set_(self, set_: MutableMapping[Selectable, Any]) -> Update:
+    def set_(self, set_: MutableMapping[Selectable, Any]) -> Self:
         self._set.update(set_)
         return self
 
@@ -487,20 +485,20 @@ def _finalize_query(sql_parts: list[Composable], end_statement: bool = True):
 
 
 class Insert(Returnable, Executable):
-    def __init__(self, *obj: Selectable | SQLModel, session: DatabaseSession):
+    def __init__(self, *obj: "Selectable | SQLModel", session: "DatabaseSession"):
         super().__init__(session=session)
-        self._target: list[Selectable | SQLModel] = list(obj)
+        self._target: list[Selectable | "SQLModel"] = list(obj)
         self._columns: list[Selectable] = list()
         self._values: list[Any] = list()
         self._on_conflict_do_nothing = False
         self._on_conflict_of_constraint: str | None = None
-        self._on_conflict_do_update: MutableMapping[Column, Any] | None = None
+        self._on_conflict_do_update: MutableMapping["Column", Any] | None = None
 
-    def columns(self, *obj: Selectable) -> Insert:
+    def columns(self, *obj: Selectable) -> Self:
         self._columns.extend(obj)
         return self
 
-    def values(self, *values: Any) -> Insert:
+    def values(self, *values: Any) -> Self:
         self._values.extend(values)
         return self
 
@@ -509,7 +507,7 @@ class Insert(Returnable, Executable):
         self._on_conflict_of_constraint = constraint_name
         return self
 
-    def on_conflict_do_update(self, constraint_name: str, mapping: MutableMapping[Column, Any]):
+    def on_conflict_do_update(self, constraint_name: str, mapping: MutableMapping["Column", Any]):
         self._on_conflict_do_update = mapping
         self._on_conflict_of_constraint = constraint_name
         return self
@@ -552,7 +550,7 @@ class Insert(Returnable, Executable):
 
 
 class Delete(Returnable, Executable):
-    def __init__(self, *obj: Selectable, session: DatabaseSession):
+    def __init__(self, *obj: Selectable, session: "DatabaseSession"):
         super().__init__(session=session)
         self._target: list[Selectable] = list(obj)
 

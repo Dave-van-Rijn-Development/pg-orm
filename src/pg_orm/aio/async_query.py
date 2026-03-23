@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from inspect import isclass
@@ -24,7 +22,7 @@ RT = TypeVar("RT")
 
 
 class AsyncQuery(ABC):
-    def __init__(self, *, session: AsyncDatabaseSession):
+    def __init__(self, *, session: "AsyncDatabaseSession"):
         self._session = session
         self._where: list[QueryClause | Operator | Composable] = list()
         self._target: list[Selectable] = list()
@@ -173,7 +171,7 @@ class AsyncQuery(ABC):
 
 
 class AsyncJoinable(AsyncQuery, ABC):
-    def __init__(self, *, session: AsyncDatabaseSession):
+    def __init__(self, *, session: "AsyncDatabaseSession"):
         super().__init__(session=session)
         self._join: list[QueryClause | Composable] = list()
         self._join_targets: list[Selectable] = list()
@@ -212,7 +210,7 @@ class AsyncJoinable(AsyncQuery, ABC):
 
 
 class AsyncExecutable(AsyncQuery, ABC):
-    def __init__(self, *, session: AsyncDatabaseSession):
+    def __init__(self, *, session: "AsyncDatabaseSession"):
         super().__init__(session=session)
 
     async def execute(self):
@@ -221,7 +219,7 @@ class AsyncExecutable(AsyncQuery, ABC):
 
 
 class AsyncReturnable(AsyncQuery, ABC):
-    def __init__(self, *, session: AsyncDatabaseSession):
+    def __init__(self, *, session: "AsyncDatabaseSession"):
         super().__init__(session=session)
         self._returning: list[Selectable] = list()
 
@@ -246,7 +244,7 @@ class AsyncReturnable(AsyncQuery, ABC):
 
 
 class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
-    def __init__(self, *obj: Selectable, session: AsyncDatabaseSession, **kwargs):
+    def __init__(self, *obj: Selectable, session: "AsyncDatabaseSession", **kwargs):
         super().__init__(session=session)
         self._select: list[Queryable] = kwargs.get('select', list(obj))
         self._group_by: list[Selectable] = kwargs.get('group_by', list())
@@ -256,23 +254,23 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
         self._as_exists: bool = kwargs.get('as_exists', False)
         self._distinct_on: list[Selectable] = kwargs.get('distinct_on', list())
 
-    def select(self, *obj: Queryable) -> AsyncSelect[RT]:
+    def select(self, *obj: Queryable) -> Self:
         self._select.extend(obj)
         return self
 
-    def group_by(self, *obj: Selectable) -> AsyncSelect[RT]:
+    def group_by(self, *obj: Selectable) -> Self:
         self._group_by.extend(obj)
         return self
 
-    def order_by(self, *obj: Selectable) -> AsyncSelect[RT]:
+    def order_by(self, *obj: Selectable) -> Self:
         self._order_by.extend(obj)
         return self
 
-    def limit(self, limit: int) -> AsyncSelect[RT]:
+    def limit(self, limit: int) -> Self:
         self._limit = limit
         return self
 
-    def offset(self, offset: int) -> AsyncSelect[RT]:
+    def offset(self, offset: int) -> Self:
         self._offset = offset
         return self
 
@@ -281,35 +279,35 @@ class AsyncSelect(AsyncJoinable, AsyncExecutable, Generic[RT]):
         self._end_statement = False
         return await self.scalar()
 
-    def distinct_on(self, *obj: Selectable) -> AsyncSelect[RT]:
+    def distinct_on(self, *obj: Selectable) -> Self:
         self._distinct_on = list(obj)
         return self
 
-    def union(self, *objs: AsyncSelect[RT], parenthesise: bool = True) -> AsyncCombiningSelect[RT]:
+    def union(self, *objs: Self, parenthesise: bool = True) -> "AsyncCombiningSelect[RT]":
         return self._build_combining_query(objs=objs,
                                            combine_params=CombineParams(combine_arg='UNION', parenthesise=parenthesise))
 
-    def union_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+    def union_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='UNION ALL',
                                                                                    parenthesise=parenthesise))
 
-    def intersect(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+    def intersect(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT',
                                                                                    parenthesise=parenthesise))
 
-    def intersect_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+    def intersect_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='INTERSECT ALL',
                                                                                    parenthesise=parenthesise))
 
-    def except_(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+    def except_(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT',
                                                                                    parenthesise=parenthesise))
 
-    def except_all(self, *objs: AsyncSelect[RT], parenthesise: bool = True):
+    def except_all(self, *objs: Self, parenthesise: bool = True):
         return self._build_combining_query(objs=objs, combine_params=CombineParams(combine_arg='EXCEPT ALL',
                                                                                    parenthesise=parenthesise))
 
-    def _build_combining_query(self, *, objs: Sequence[AsyncSelect[RT]], combine_params: CombineParams):
+    def _build_combining_query(self, *, objs: Sequence[Self], combine_params: CombineParams):
         return AsyncCombiningSelect(combine_selects=list(objs), combine_params=combine_params, session=self._session,
                                     group_by=self._group_by, order_by=self._order_by, limit=self._limit,
                                     offset=self._offset, as_exists=self._as_exists, distinct_on=self._distinct_on,
@@ -438,7 +436,7 @@ class AsyncCombiningSelect(AsyncSelect[RT]):
 
 
 class AsyncUpdate(AsyncReturnable):
-    def __init__(self, *obj: Selectable, session: AsyncDatabaseSession):
+    def __init__(self, *obj: Selectable, session: "AsyncDatabaseSession"):
         super().__init__(session=session)
         self._target: list[Selectable] = list(obj)
         self._set: MutableMapping[Selectable, Any] = dict()
@@ -479,14 +477,14 @@ def _finalize_query(sql_parts: list[Composable], end_statement: bool = True):
 
 
 class AsyncInsert(AsyncReturnable, AsyncExecutable):
-    def __init__(self, *obj: Selectable | AsyncSQLModel, session: AsyncDatabaseSession):
+    def __init__(self, *obj: "Selectable | AsyncSQLModel", session: "AsyncDatabaseSession"):
         super().__init__(session=session)
-        self._target: list[Selectable | AsyncSQLModel] = list(obj)
+        self._target: list[Selectable | "AsyncSQLModel"] = list(obj)
         self._columns: list[Selectable] = list()
         self._values: list[Any] = list()
         self._on_conflict_do_nothing = False
         self._on_conflict_of_constraint: str | None = None
-        self._on_conflict_do_update: MutableMapping[Column, Any] | None = None
+        self._on_conflict_do_update: MutableMapping["Column", Any] | None = None
 
     def columns(self, *obj: Selectable) -> Self:
         self._columns.extend(obj)
@@ -501,7 +499,7 @@ class AsyncInsert(AsyncReturnable, AsyncExecutable):
         self._on_conflict_of_constraint = constraint_name
         return self
 
-    def on_conflict_do_update(self, constraint_name: str, mapping: MutableMapping[Column, Any]):
+    def on_conflict_do_update(self, constraint_name: str, mapping: MutableMapping["Column", Any]):
         self._on_conflict_do_update = mapping
         self._on_conflict_of_constraint = constraint_name
         return self
@@ -544,7 +542,7 @@ class AsyncInsert(AsyncReturnable, AsyncExecutable):
 
 
 class AsyncDelete(AsyncReturnable, AsyncExecutable):
-    def __init__(self, *obj: Selectable, session: AsyncDatabaseSession):
+    def __init__(self, *obj: Selectable, session: "AsyncDatabaseSession"):
         super().__init__(session=session)
         self._target: list[Selectable] = list(obj)
 
