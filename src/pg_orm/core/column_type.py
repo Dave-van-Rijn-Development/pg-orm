@@ -85,6 +85,11 @@ class Integer(ColumnType):
     python_type = int
 
 
+class Float(ColumnType):
+    pg_type = 'FLOAT'
+    python_type = float
+
+
 class BigInteger(ColumnType):
     pg_type = 'BIGINT'
     python_type = int
