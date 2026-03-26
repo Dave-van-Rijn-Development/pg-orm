@@ -2,7 +2,7 @@ import asyncio
 import atexit
 from collections import defaultdict
 from threading import local
-from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast
+from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast, overload
 from weakref import WeakSet
 
 from psycopg import AsyncConnection, AsyncCursor
@@ -81,7 +81,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         session.created_objects = list()
         session.credentials = credentials
         if isolate:
-            atexit.register(session.close)
+            atexit.register(session.close_sync)
         else:
             _add_local_session(session)
             AsyncDatabaseSession.__instances__[cls].add(session)
@@ -110,6 +110,9 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             ...
 
         async def fetch_many(self: Any, *args, **kwargs):
+            ...
+
+        async def iter_many(self: Any, *args, **kwargs):
             ...
 
         async def row_count(self: Any = None) -> int:
@@ -229,6 +232,14 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
     async def fetch_many(self, size: int):
         cursor = await self._cursor
         return await cursor.fetchmany(size)
+
+    async def iter_many(self, size: int):
+        while True:
+            rows = await self.fetch_many(size)
+            if not rows:
+                break
+            for row in rows:
+                yield row
 
     async def row_count(self=None) -> int:
         cursor = await self._cursor

@@ -42,6 +42,7 @@ session_proxy_attrs = (
     'add_all',
     'scalar',
     'fetch_many',
+    'iter_many',
     'row_count',
     'add',
     'insert',
@@ -263,6 +264,13 @@ class DatabaseSession(metaclass=SessionMeta):
 
     def fetch_many(self, size: int):
         return self._cursor.fetchmany(size)
+
+    def iter_many(self, size: int):
+        while True:
+            rows = self.fetch_many(size)
+            if not rows:
+                break
+            yield from rows
 
     def row_count(self=None) -> int:
         return self._cursor.rowcount
