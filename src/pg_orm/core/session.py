@@ -41,6 +41,7 @@ session_proxy_attrs = (
     'all',
     'add_all',
     'scalar',
+    'scalars',
     'fetch_many',
     'iter_many',
     'row_count',
@@ -154,6 +155,9 @@ class DatabaseSession(metaclass=SessionMeta):
         def scalar(self: Any = None) -> Any:
             ...
 
+        def scalars(self: Any, param: str | int = None) -> list[Any]:
+            ...
+
         def fetch_many(self: Any, *args, **kwargs):
             ...
 
@@ -252,7 +256,7 @@ class DatabaseSession(metaclass=SessionMeta):
     def all(self=None) -> list[dict[str, Any]]:
         return self._cursor.fetchall()
 
-    def scalar(self=None):
+    def scalar(self):
         current_factory = self._cursor.row_factory
         self._cursor.row_factory = tuple_row
         # noinspection PyTypeChecker
@@ -261,6 +265,12 @@ class DatabaseSession(metaclass=SessionMeta):
         if not result:
             return None
         return result[0]
+
+    def scalars(self: Any, param: str | int = None):
+        if not param:
+            param = 0
+        for row in self:
+            yield row[param]
 
     def fetch_many(self, size: int):
         return self._cursor.fetchmany(size)
