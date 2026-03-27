@@ -213,6 +213,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         await self.set_search_path()
         cursor = await self._cursor
         await cursor.executemany(sql, params)
+        return self
 
     async def first(self=None) -> dict[str, Any]:
         cursor = await self._cursor
