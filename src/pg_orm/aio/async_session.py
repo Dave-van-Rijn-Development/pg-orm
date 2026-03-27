@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 from collections import defaultdict
+from inspect import isawaitable
 from threading import local
 from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast, overload, AsyncGenerator
 from weakref import WeakSet
@@ -264,7 +265,9 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         # Create the cursor if needed to make sure objects get flushed
         _ = await self._cursor
         if not obj.exists_in_db:
-            await obj.set_defaults()
+            res = obj.set_defaults()
+            if res is not None and isawaitable(res):
+                await res
         if primary_str := obj.primary_str:
             self.known_objects[primary_str] = obj
         else:
