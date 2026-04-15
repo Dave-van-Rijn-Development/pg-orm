@@ -70,7 +70,7 @@ class Query(ABC):
     def iter_many(self, *, size: int):
         while True:
             if not (result := self._session.fetch_many(size=size)):
-                raise StopIteration
+                return
             yield self._build_result(result=result)
 
     def _build_result(self, *, result: dict):

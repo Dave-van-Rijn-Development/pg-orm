@@ -3,7 +3,7 @@ import atexit
 from collections import defaultdict
 from inspect import isawaitable
 from threading import local
-from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast, overload, AsyncGenerator
+from typing import Any, Self, TYPE_CHECKING, MutableMapping, Type, Iterable, cast, AsyncGenerator
 from weakref import WeakSet
 
 from psycopg import AsyncConnection, AsyncCursor
@@ -110,13 +110,13 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         async def scalar(self: Any = None) -> Any:
             ...
 
-        async def scalars(self: Any, param: str | int = None) -> AsyncGenerator[Any]:
+        def scalars(self: Any, param: str | int = None) -> AsyncGenerator[Any]:
             ...
 
         async def fetch_many(self: Any, *args, **kwargs):
             ...
 
-        async def iter_many(self: Any, *args, **kwargs):
+        def iter_many(self: Any, *args, **kwargs) -> AsyncGenerator[Any]:
             ...
 
         async def row_count(self: Any = None) -> int:

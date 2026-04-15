@@ -71,7 +71,7 @@ class AsyncQuery(ABC):
     async def iter_many(self, *, size: int):
         while True:
             if not (result := await self._session.fetch_many(size=size)):
-                raise StopIteration
+                return
             yield await self._build_result(result=result)
 
     async def _build_result(self, *, result: dict):
