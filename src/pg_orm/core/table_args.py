@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import MutableMapping, Literal as TypeLiteral
+from typing import MutableMapping, Literal
 
-from psycopg.sql import Composed, SQL, Identifier, Composable, Literal
+from psycopg.sql import Composed, SQL, Identifier, Composable, Literal as SQLLiteral
 
 from pg_orm.core.column import Column
 from pg_orm.core.enums import IndexOption
@@ -24,7 +24,7 @@ class TableArg(ABC):
 class Index(TableArg):
     def __init__(self, name: str, *columns: str | Column,
                  options: MutableMapping[str | Column, IndexOption | tuple[IndexOption, ...]] = None,
-                 index_type: TypeLiteral['btree', 'brin'] = 'btree'):
+                 index_type: Literal['btree', 'brin'] = 'btree'):
         super().__init__(name)
         self.columns = columns
         self.options = options
@@ -79,11 +79,10 @@ class UniqueConstraint(TableArg):
             "DO $$ BEGIN IF NOT EXISTS (SELECT constraint_name FROM information_schema.constraint_column_usage "
             "WHERE table_name = {str_table_name} AND constraint_name = {str_name}) THEN ALTER TABLE IF EXISTS "
             "{table_name} ADD CONSTRAINT {name} UNIQUE ({columns}); END IF; END; $$;")
-        # sql = SQL("ALTER TABLE IF EXISTS {table_name} ADD CONSTRAINT {name} UNIQUE ({columns});")
         return sql.format(
-            str_table_name=Literal(self.table_name),
+            str_table_name=SQLLiteral(self.table_name),
             table_name=Identifier(self.table_name),
-            str_name=Literal(self.name),
+            str_name=SQLLiteral(self.name),
             name=Identifier(self.name),
             columns=SQL(", ").join(Identifier(get_column_name(col)) for col in self.columns),
         )
