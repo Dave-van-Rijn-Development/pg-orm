@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import MutableMapping
+from typing import MutableMapping, Literal as TypeLiteral
 
 from psycopg.sql import Composed, SQL, Identifier, Composable, Literal
 
@@ -23,17 +23,20 @@ class TableArg(ABC):
 
 class Index(TableArg):
     def __init__(self, name: str, *columns: str | Column,
-                 options: MutableMapping[str | Column, IndexOption | tuple[IndexOption, ...]] = None):
+                 options: MutableMapping[str | Column, IndexOption | tuple[IndexOption, ...]] = None,
+                 index_type: TypeLiteral['btree', 'brin'] = 'btree'):
         super().__init__(name)
         self.columns = columns
         self.options = options
+        self.index_type = index_type
 
     def build_create_sql(self) -> Composed:
-        sql = SQL("CREATE INDEX IF NOT EXISTS {name} ON {table_name} USING btree ({columns});")
+        sql = SQL("CREATE INDEX IF NOT EXISTS {name} ON {table_name} USING {index_type} ({columns});")
         columns: list[Composable] = self._build_columns()
         return sql.format(
             name=Identifier(self.name),
             table_name=Identifier(self.table_name),
+            index_type=SQL(self.index_type),
             columns=SQL(", ").join(columns),
         )
 
