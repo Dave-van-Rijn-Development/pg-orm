@@ -38,7 +38,7 @@ class Query(ABC):
 
     if TYPE_CHECKING:
         # "Fool" type checkers
-        def where(self, *criteria: bool) -> Self:
+        def where(self, *criteria: bool | QueryClause | Operator | Composable) -> Self:
             ...
     else:
         def where(self, *criteria: QueryClause | Operator | Composable) -> Self:
