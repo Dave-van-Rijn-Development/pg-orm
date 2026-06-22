@@ -51,8 +51,8 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
     created_objects: list["AsyncSQLModel"] = list()
     deleted_objects: MutableMapping[str, "AsyncSQLModel"] = dict()
 
-    def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
-                isolate: bool = False, ensure_path: str = None) -> Self:
+    def __new__(cls, *, auto_commit: bool = True, credentials: Credentials | None = None,
+                isolate: bool = False, ensure_path: str | None = None, **connection_kwargs) -> Self:
         """
         Get the AsyncDatabaseSession object for the current thread, or construct a new one if none is constructed before.
         This makes use there is generally only one session per thread.
@@ -77,6 +77,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
         session.__cursor = None
         session._auto_commit = auto_commit
         session._ensure_path = ensure_path
+        session._connection_kwargs = connection_kwargs
         session.known_objects = dict()
         session.deleted_objects = dict()
         session.created_objects = list()
@@ -323,7 +324,7 @@ class AsyncDatabaseSession(metaclass=AsyncSessionMeta):
             self.__connection = await AsyncConnection.connect(user=credentials.username, password=credentials.password,
                                                               host=credentials.host, port=credentials.port,
                                                               dbname=credentials.database_name,
-                                                              autocommit=self._auto_commit)
+                                                              autocommit=self._auto_commit, **self._connection_kwargs)
             self.known_objects = dict()
             self.created_objects = []
             self.deleted_objects = dict()
