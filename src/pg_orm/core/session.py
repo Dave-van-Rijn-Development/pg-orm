@@ -23,8 +23,8 @@ class Credentials:
     default_port: int = 5432
     default_database_name: str = None
 
-    def __init__(self, *, username: str = None, password: str = None, host: str = None, port: int = None,
-                 database_name: str = None):
+    def __init__(self, *, username: str | None = None, password: str | None = None, host: str | None = None,
+                 port: int | None = None, database_name: str | None = None):
         self.username = username or Credentials.default_username
         self.password = password or Credentials.default_password
         self.host = host or Credentials.default_host
@@ -92,8 +92,8 @@ class DatabaseSession(metaclass=SessionMeta):
     created_objects: list["SQLModel"] = list()
     deleted_objects: MutableMapping[str, "SQLModel"] = dict()
 
-    def __new__(cls, *, auto_commit: bool = True, credentials: Credentials = None,
-                isolate: bool = False, ensure_path: str = None) -> Self:
+    def __new__(cls, *, auto_commit: bool = True, credentials: Credentials | None = None,
+                isolate: bool = False, ensure_path: str | None = None, **connection_kwargs) -> Self:
         """
         Get the DatabaseSession object for the current thread, or construct a new one if none is constructed before.
         This makes use there is generally only one session per thread.
@@ -118,6 +118,7 @@ class DatabaseSession(metaclass=SessionMeta):
         session.__cursor = None
         session._auto_commit = auto_commit
         session._ensure_path = ensure_path
+        session._connection_kwargs = connection_kwargs
         session.known_objects = dict()
         session.deleted_objects = dict()
         session.created_objects = list()
@@ -355,7 +356,8 @@ class DatabaseSession(metaclass=SessionMeta):
         if self.__connection is None or self.__connection.closed:
             self.__connection = Connection.connect(user=credentials.username, password=credentials.password,
                                                    host=credentials.host, port=credentials.port,
-                                                   dbname=credentials.database_name, autocommit=self._auto_commit)
+                                                   dbname=credentials.database_name, autocommit=self._auto_commit,
+                                                   **self._connection_kwargs)
             self.known_objects = dict()
             self.created_objects = []
             self.deleted_objects = dict()
